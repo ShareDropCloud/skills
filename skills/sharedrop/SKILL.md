@@ -134,6 +134,18 @@ of its JavaScript** (served as static, with a banner explaining why).
 the page is temporarily public while the link is active. Manage with
 `list_ephemeral_links` / `revoke_ephemeral_link`.
 
+## Watermark (Pro)
+
+Toggle a tiled "sharedrop" watermark overlay rendered over the page in the viewer, so
+screenshots of shared content carry the mark. Works on any page kind (HTML, image, PDF).
+Set it with `update_page` — pass `watermark_enabled: true` (or `false` to remove it):
+
+- Enabling requires a paid tier; on free tier it returns the `TIER_LIMIT` billing error.
+  Disabling is always allowed.
+- It's a viewer overlay only — the stored file is untouched, and the URL stays the same.
+- Only enable it when the user asks to watermark or protect shared content; it's off by
+  default.
+
 ## Error handling
 
 Errors come back as `Error [CODE]: message`:
@@ -142,16 +154,18 @@ Errors come back as `Error [CODE]: message`:
   suggest upgrading.
 - `FILE_SIZE_EXCEEDED` — over your tier's max file size (the message includes the cap).
   Compress inline images or split the document.
-- `VALIDATION_ERROR` on visibility — free tier asking for `shared`. Switch to `private` +
-  `share_with_email`.
+- `TIER_LIMIT` — a paid-only feature on a free tier: `shared` visibility, enabling the
+  watermark, or an ephemeral link. Tell the user it needs an upgrade; don't retry. For
+  `shared` specifically, fall back to `private` + `share_with_email`, which works on any tier.
 - `UNAUTHORIZED` — key missing, revoked, or read-only. Point the user at
   https://sharedrop.cloud/dashboard/settings/api-keys.
 
 ## Tools
 
 `whoami` · `create_upload` / `finalize_upload` / `finalize_bundle` · `upload_html` ·
-`upload_file` · `paste_html` · `get_page` · `list_pages` · `update_page` (metadata only —
-re-upload with `page_id` to change content) · `delete_page` · `share_with_email` ·
+`upload_file` · `paste_html` · `get_page` · `list_pages` · `update_page` (title,
+visibility, and `watermark_enabled` — metadata only; re-upload with `page_id` to change
+content) · `delete_page` · `share_with_email` ·
 `share_page` · `list_shares` · `revoke_share` · `create_ephemeral_link` ·
 `list_ephemeral_links` · `revoke_ephemeral_link`
 
