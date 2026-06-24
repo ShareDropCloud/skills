@@ -115,6 +115,25 @@ The URL stays the same — anyone holding it sees the new content immediately �
 is recorded. Do NOT upload without `page_id` to "update": that creates a duplicate page and
 burns quota.
 
+## Reading a page's content (fetch)
+
+When you are handed a Sharedrop page — your own, a public one, or one shared with you — and you
+need the **actual content** (not just metadata), use `fetch_page`. `get_page` returns metadata
+(title, URL, visibility); `fetch_page` returns the raw bytes. Do NOT try to `curl` the page URL:
+that only ever returns the sandboxed viewer shell, never the content.
+
+Two steps (a token handoff — the reverse of upload):
+
+1. Call `fetch_page` with the `page_id`. You get back a short-lived signed `fetch_url` plus
+   `content_type`, `mode`, and `size`.
+2. Do a plain HTTP `GET` on `fetch_url` (no auth header — the token is in the URL) to stream the
+   raw bytes. The URL expires in ~5 minutes.
+
+Available on every tier (check `entitlements.fetch` in `whoami`). Access matches the rest of the
+platform: you may fetch your own pages, any public page, and any page shared to one of your
+verified emails — otherwise you get a 404. The bytes come back with the page's real content type
+and `Content-Disposition: attachment` (so a browser never executes them); just read the body.
+
 ## Interactive pages must be fully self-contained
 
 Interactive pages run JavaScript in a locked-down, local-only sandbox. If an interactive
@@ -163,7 +182,7 @@ Errors come back as `Error [CODE]: message`:
 ## Tools
 
 `whoami` · `create_upload` / `finalize_upload` / `finalize_bundle` · `upload_html` ·
-`upload_file` · `paste_html` · `get_page` · `list_pages` · `update_page` (title,
+`upload_file` · `paste_html` · `get_page` · `fetch_page` · `list_pages` · `update_page` (title,
 visibility, and `watermark_enabled` — metadata only; re-upload with `page_id` to change
 content) · `delete_page` · `share_with_email` ·
 `share_page` · `list_shares` · `revoke_share` · `create_ephemeral_link` ·
@@ -188,6 +207,11 @@ curl -X POST https://sharedrop.cloud/api/v1/pages \
 
 # Who am I / quota
 curl https://sharedrop.cloud/api/v1/me -H "Authorization: Bearer sd_YOUR_KEY"
+
+# Fetch a page's RAW content (two-step token handoff)
+FETCH_URL=$(curl -s -H "Authorization: Bearer sd_YOUR_KEY" \
+  https://sharedrop.cloud/api/v1/pages/<page_id>/fetch | jq -r '.data.fetch_url')
+curl -s "$FETCH_URL" -o page.html      # no auth header — the URL token is the credential
 ```
 
 Full API reference: https://sharedrop.cloud/docs/api-reference
