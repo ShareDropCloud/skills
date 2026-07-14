@@ -179,12 +179,13 @@ For MCP-native clients with no shell. It's remote-only HTTP at
 ```
 
 Upload without base64 by streaming: `create_upload` → HTTP `PUT` the bytes to the returned
-`upload_url` (`Authorization: Bearer <upload_token>`) → `finalize_upload`. Use `upload_html`
-for raw HTML and `fetch_page` to read content back. The rest map onto the CLI verbs:
+`upload_url` (`Authorization: Bearer <upload_token>`) → `finalize_upload`. Every file,
+including HTML, uses the same streamed pipeline; supply `page_id` when replacing an existing
+page. Use `fetch_page` to read content back. The rest map onto the CLI verbs:
 `whoami`, `get_page`, `list_pages`, `update_page`, `delete_page`, `share_with_email`,
 `share_page`, `list_shares`, `revoke_share`, `create_ephemeral_link`,
-`list_ephemeral_links`, `revoke_ephemeral_link`, `finalize_bundle`, `paste_html`,
-`upload_file`. Setup per client: https://sharedrop.cloud/dashboard/settings/mcp
+`list_ephemeral_links`, `revoke_ephemeral_link`, `finalize_bundle`.
+Setup per client: https://sharedrop.cloud/dashboard/settings/mcp
 
 ### REST API
 

@@ -64,11 +64,10 @@ and falls back to MCP/REST only when there's no shell. Specifically:
   surface the exact returned URL (never invent one) — the URL is the deliverable.
 
 Surfaces it can drive: the **`sharedrop` CLI** (primary); the hosted **MCP server**
-(`whoami`, `create_upload`/`finalize_upload`/`finalize_bundle`, `upload_html`,
-`upload_file`, `paste_html`, `get_page`, `fetch_page`, `list_pages`, `update_page`,
-`delete_page`, `share_with_email`, `share_page`, `list_shares`, `revoke_share`,
-`create_ephemeral_link`, `list_ephemeral_links`, `revoke_ephemeral_link`); and the
-**REST API**.
+(`whoami`, `create_upload`/`finalize_upload`/`finalize_bundle`, `get_page`, `fetch_page`,
+`list_pages`, `update_page`, `delete_page`, `share_with_email`, `share_page`,
+`list_shares`, `revoke_share`, `create_ephemeral_link`, `list_ephemeral_links`,
+`revoke_ephemeral_link`); and the **REST API**.
 
 Supported upload types: HTML, MHTML web archives, Markdown, PDF, and images
 (PNG, JPEG, WebP, GIF, AVIF, BMP, ICO, APNG, SVG, HEIC/HEIF, TIFF).
