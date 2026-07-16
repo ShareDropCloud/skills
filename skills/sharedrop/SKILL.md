@@ -30,9 +30,10 @@ No global install? `npx @sharedrop/cli upload report.html` runs the same thing o
 
 ### Authenticate once
 
-The CLI takes the first credential it finds, in this order: the `SHAREDROP_TOKEN`
-environment variable, then a `.env` in the working directory, then a key saved by
-`sharedrop login`. Pick the one that fits where you're running:
+The CLI takes the first credential it finds, in this order: a `--token` flag, then the
+`SHAREDROP_TOKEN` environment variable, then a `.env` in the working directory, then a key
+saved by `sharedrop login`. (It targets `https://sharedrop.cloud` unless you pass `--url` or
+set `SHAREDROP_URL`.) Pick the one that fits where you're running:
 
 - **On a machine with a browser** — run `sharedrop login` once. It opens the browser, mints
   a CLI key, and stores it in your OS config directory, so every later command just works
@@ -86,6 +87,26 @@ slug or a full page URL works there too, so you can paste whatever the user hand
 Control flow can lean on exit codes instead of scraping text: `0` success, `1` general
 error, `2` no token, `3` token rejected, `4` rate limited, `5` not found, `6` bad input.
 
+### Organise into folders (Pro plan or higher)
+
+Pro accounts can file pages into nested folders. `--folder` takes a folder id or a slash
+path like `reports/2026/q3` (missing segments are auto-created); a free key gets a
+`FOLDERS_RESTRICTED` error with an upgrade link instead of a silent root fallback.
+
+```bash
+sharedrop upload report.html --folder reports/q3 --json   # file a new page as it lands
+sharedrop move <id> --folder reports/q3 --json            # move an existing page in
+sharedrop move <id> --root --json                         # ...or back to the top level
+sharedrop list --folder reports/q3 --json                 # list a folder's pages
+
+sharedrop folder create reports/2026/q3 --json            # nested; auto-creates segments
+sharedrop folder list --json                              # top-level folders (--parent <id> for children)
+sharedrop folder rename <id> "Q3 Reports" --json
+sharedrop folder move <id> --root --json                  # reparent (--parent <id>) or --root
+sharedrop folder delete <id> --force --json               # non-empty: subtree to trash 30 days
+sharedrop folder restore <id> --json                      # undo within 30 days
+```
+
 ### A typical run
 
 **Input:** the user says *"make me a sales dashboard and send me the link."*
@@ -122,9 +143,9 @@ dodge writing a normal answer — if the reply belongs in chat, just write it.
   say "anyone can view". `shared` (named email grants on the page) needs a paid tier; on a
   free account, keep the page `private` and use `sharedrop share`, which grants a specific
   person access and works on every tier.
-- **Mode applies to HTML only.** Omit `--mode` to take the account's default. Pass `static`
-  when the page is purely declarative (scripts get stripped — safe and fine for most
-  reports), and `interactive` only when it genuinely needs to run JavaScript.
+- **Mode applies to HTML only** and defaults to `static` (scripts get stripped, which is
+  safe and fine for most reports). Pass `--mode interactive` only when the page genuinely
+  needs to run JavaScript, and only when it is fully self-contained (see below).
 
 ## Interactive pages must be fully self-contained
 
@@ -184,7 +205,10 @@ including HTML, uses the same streamed pipeline; supply `page_id` when replacing
 page. Use `fetch_page` to read content back. The rest map onto the CLI verbs:
 `whoami`, `get_page`, `list_pages`, `update_page`, `delete_page`, `share_with_email`,
 `share_page`, `list_shares`, `revoke_share`, `create_ephemeral_link`,
-`list_ephemeral_links`, `revoke_ephemeral_link`, `finalize_bundle`.
+`list_ephemeral_links`, `revoke_ephemeral_link`, `finalize_bundle`. Pro accounts also get
+folder tools (`create_folder`, `list_folders`, `move_page`, `delete_folder`,
+`restore_page`), and `finalize_upload` accepts `folder_id` or `folder_path` to file a new
+upload straight into a folder.
 Setup per client: https://sharedrop.cloud/dashboard/settings/mcp
 
 ### REST API
