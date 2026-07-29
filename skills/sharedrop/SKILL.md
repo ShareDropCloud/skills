@@ -1,7 +1,7 @@
 ---
 name: sharedrop
 description: |
-  Share AI-generated documents with a human through Sharedrop, the agent-native file drop, and read shared pages back into context. Use this whenever you produce something rendered the user should see, keep, link to, or hand to someone else: a report, dashboard, status page, generated documentation, a slide deck, a PDF, an image. If it lands better as a clean URL than as a wall of markup in chat, use this. It is also how you build a **presentation**: mark an HTML deck as slides and Sharedrop presents it fullscreen with keyboard, click, and fragment-by-fragment reveals, so "make me a deck" ends at a URL you can put on a TV rather than a PowerPoint export. Also reach for it when asked to update a page you shared earlier, share one with someone by email, or pull a Sharedrop page's real content back in. Triggers include "share this with me", "send this report to …", "publish this", "save it and send the link", "make this viewable", "drop it in Sharedrop", "give them a URL", "update that page", "fetch/read that sharedrop page", and for the deck path "make me a slide deck", "build a presentation", "put this on the TV", "present this", "turn this into slides". Prefer this over pasting raw HTML, attaching files, or hosting elsewhere. The fastest, most reliable path is the `sharedrop` CLI. Reach for it first.
+  Share AI-generated documents through Sharedrop and read shared pages back into context. Use when the user asks to share, publish, save, or update a report, dashboard, document, slide deck, PDF, image, or other generated artefact; requests a stable URL; asks to share a page by email; or provides a Sharedrop page to fetch. Also use for HTML slide decks intended for presentation. Prefer the authenticated `sharedrop` CLI, default to private visibility, update existing pages by ID to preserve their URLs, and surface the exact URL returned by Sharedrop.
 ---
 
 # Sharedrop
@@ -45,6 +45,8 @@ set `SHAREDROP_URL`.) Pick the one that fits where you're running:
 
 Run `sharedrop whoami` to confirm. It reports the username, plan tier, and remaining quota,
 which is also how you learn what the account is allowed to do before you try something.
+Use that output for the preflight decision; do not repeat the account email, quota, or other
+personal metadata to the user unless it is relevant to the request.
 
 ### The commands you'll use
 
@@ -67,8 +69,8 @@ URL=$(cat report.html | sharedrop upload - --json | jq -r '.data.full_url')
 sharedrop update <id> report.html --json
 sharedrop update <id> --title "Updated Report" --visibility public --json
 
-# READ a page's real content back into context: your own, a public one, or one shared to
-# you. `fetch` returns the raw bytes; `get` returns only metadata. Free on every tier.
+# READ a page's served root content back into context: your own, a public one, or one
+# shared to you. `get` returns only metadata. Free on every tier.
 sharedrop fetch <id>                 # raw bytes to stdout, pipe into another tool
 sharedrop fetch <id> -o report.html  # …or write a file
 
@@ -77,13 +79,17 @@ sharedrop list --json                       # your pages (each row carries the i
 sharedrop search "q4 report" --json         # matches title, slug, id, and file type at once
 sharedrop get <ref> --json                  # one page's metadata
 sharedrop share <id> --email alice@example.com --json
-sharedrop delete <id> --json
 sharedrop download <id> -o page.zip --json  # the full artefact (root + assets) as a zip
 ```
 
 Refer to a page by the **id** from `list` or the upload response. `fetch` and `download`
 need that id specifically. `get`, `update`, `delete`, and `share` are more forgiving: a
 slug or a full page URL works there too, so you can paste whatever the user handed you.
+
+`fetch` is not byte-preserving for every kind. Rendered kinds such as Markdown and native
+skill pages can return sanitised or rendered HTML rather than the original source file.
+Use checksums only for kinds documented as byte-preserving. For rendered kinds, verify the
+metadata with `get` and inspect the fetched page for the expected semantic content.
 
 Control flow can lean on exit codes instead of scraping text: `0` success, `1` general
 error, `2` no token, `3` token rejected, `4` rate limited, `5` not found, `6` bad input.
@@ -104,9 +110,56 @@ sharedrop folder create reports/2026/q3 --json            # nested; auto-creates
 sharedrop folder list --json                              # top-level folders (--parent <id> for children)
 sharedrop folder rename <id> "Q3 Reports" --json
 sharedrop folder move <id> --root --json                  # reparent (--parent <id>) or --root
-sharedrop folder delete <id> --force --json               # non-empty: subtree to trash 30 days
 sharedrop folder restore <id> --json                      # undo within 30 days
 ```
+
+### Share an agent skill
+
+A standard agent skill can be a directory containing `SKILL.md` plus `references/`,
+`scripts/`, `assets/`, or agent metadata. A Sharedrop native skill page is one uploaded
+file. Inspect the source skill tree before uploading:
+
+- If `SKILL.md` is genuinely self-contained, upload it directly. Sharedrop recognises
+  `SKILL.md`, `*.skill.md`, and `*.skill` as native skill pages.
+- If the skill depends on other files, do not upload `SKILL.md` alone. Create a
+  self-contained distribution copy such as `<name>.skill` by embedding the required
+  reference material and replacing local relative links. Keep the original skill
+  directory unchanged as the maintainable source.
+- Do not imply that a viewer URL is an installable multi-file skill package. If the
+  recipient needs the original directory, provide it through a distribution method that
+  preserves the complete tree.
+
+Before creating a page, search for the title. Update the existing page by id when it is a
+revision; create a new page only when no matching page exists.
+
+```bash
+sharedrop whoami --json
+sharedrop folder list --json
+sharedrop search "Ascend Notion CRM" --json
+
+# New self-contained skill:
+sharedrop upload ascend-notion-crm.skill \
+  --title "Ascend Notion CRM" \
+  --visibility private \
+  --folder Skills \
+  --json
+
+# Revision: preserve the established URL.
+sharedrop update <id> ascend-notion-crm.skill --json
+```
+
+Verify a skill upload before reporting success:
+
+```bash
+sharedrop get <id> --json
+sharedrop list --folder Skills --json
+sharedrop fetch <id> -o rendered-skill.html
+```
+
+Confirm that `get` reports `kind: "skill"`, the intended visibility, and the exact
+`full_url`; confirm the page id appears in the intended folder; then inspect the rendered
+page for the expected workflow and embedded reference content. Do not require its checksum
+to match the Markdown source.
 
 ### A typical run
 
@@ -127,6 +180,18 @@ Later they say *"update it with March numbers"*, so you regenerate and
 
 Full CLI reference: https://sharedrop.cloud/docs/cli
 
+## Verify every write
+
+An upload or update response is not sufficient proof by itself:
+
+1. Capture the returned page id and exact `data.full_url`.
+2. Run `sharedrop get <id> --json` and confirm title, kind, visibility, and updated time.
+3. If a folder was requested, run `sharedrop list --folder <id-or-path> --json` and confirm
+   the page id is present.
+4. Verify content in a kind-appropriate way: byte comparison only for byte-preserving
+   kinds, semantic inspection for rendered kinds.
+5. Report the exact returned URL, not one reconstructed from the username or slug.
+
 ## When to use it (and when not)
 
 Upload whenever you've produced something the user will *look at* rather than read in the
@@ -135,8 +200,9 @@ especially if they'll want to revisit or forward it. If they asked you to share 
 named person, upload and then `share`. If they handed you a Sharedrop page and need its
 contents, `fetch`.
 
-Don't upload secrets or anything the user didn't ask to make shareable, and don't use it to
-dodge writing a normal answer. If the reply belongs in chat, just write it.
+Don't upload secrets, credentials, private client material, or anything the user didn't ask
+to make shareable. Do not use Sharedrop to dodge writing a normal answer. If the reply
+belongs in chat, just write it.
 
 ## Choosing visibility and mode
 
@@ -232,6 +298,20 @@ recipient can still open it through the grant. Two Pro-only extras aren't in the
 **disappearing links** that expire by time or view count, and a **watermark overlay**.
 Reach for the MCP tools (`create_ephemeral_link`, `update_page` with `watermark_enabled`)
 or the dashboard for those.
+
+## Destructive actions
+
+Delete a page or folder only when the user explicitly asks. Resolve the exact target with
+`search`, `get`, or `folder list` first; never infer a destructive target from a partial
+name. State what will be removed and whether it is recoverable before running:
+
+```bash
+sharedrop delete <exact-page-id> --json
+sharedrop folder delete <exact-folder-id> --force --json
+```
+
+Do not treat cleanup, replacement, or quota pressure as implicit permission to delete.
+Use `update` for a revision so the existing URL and version history are preserved.
 
 ## When something goes wrong
 
