@@ -294,10 +294,17 @@ Full guide: https://sharedrop.cloud/docs/slides
 
 `sharedrop share <id> --email someone@example.com` grants one person access; on a paid tier
 the page auto-promotes to `shared` visibility, and on free tier it stays private but the
-recipient can still open it through the grant. Two Pro-only extras aren't in the CLI:
-**disappearing links** that expire by time or view count, and a **watermark overlay**.
-Reach for the MCP tools (`create_ephemeral_link`, `update_page` with `watermark_enabled`)
-or the dashboard for those.
+recipient can still open it through the grant.
+
+Pro accounts can also create **disappearing links**: a separate link that expires by time or
+view count, for anyone holding it or only for named people who sign in
+(`create_ephemeral_link` with `audience: "people"` and `emails`). A disappearing link never
+changes the page's own visibility or share list, so it is safe on a private or shared page.
+On a "people" link Sharedrop emails each person the link and its limits (pass `notify: false`
+if the user wants to send it themselves).
+CLI releases after 1.10.0 have `sharedrop link create <id> [--people a@x.com,b@x.com]
+--expires-in 12h --max-views 5`. The **watermark overlay** is MCP (`update_page` with
+`watermark_enabled`) or dashboard only.
 
 ## Destructive actions
 
@@ -320,8 +327,10 @@ retrying blindly:
 
 - `PAGE_LIMIT_REACHED`: the free-tier page cap. `list`, ask the user what to remove, or
   suggest upgrading.
-- `FILE_SIZE_EXCEEDED`: over the tier's size limit (the message gives the cap). Compress
-  inline images or split the document.
+- `FILE_SIZE_EXCEEDED`: over the size limit (the message gives the cap). HTML, other
+  text files and SVG images are capped at 10 MB on every plan, so upgrading does not help there. Compress
+  inline images or split the document; larger content can go up as a zip, stored as a
+  download-only archive (Pro and Team).
 - `TIER_LIMIT`: a paid-only action on a free plan (e.g. `shared` visibility, an image
   upload). Tell the user it needs an upgrade instead of retrying; for `shared` specifically,
   fall back to `private` + `share`, which works anywhere.
@@ -350,7 +359,7 @@ including HTML, uses the same streamed pipeline; supply `page_id` when replacing
 page. Use `fetch_page` to read content back. The rest map onto the CLI verbs:
 `whoami`, `get_page`, `list_pages`, `update_page`, `delete_page`, `share_with_email`,
 `share_page`, `list_shares`, `revoke_share`, `create_ephemeral_link`,
-`list_ephemeral_links`, `revoke_ephemeral_link`, `finalize_bundle`. Pro accounts also get
+`list_ephemeral_links`, `update_ephemeral_link`, `revoke_ephemeral_link`, `finalize_bundle`. Pro accounts also get
 folder tools (`create_folder`, `list_folders`, `move_page`, `delete_folder`,
 `restore_page`), and `finalize_upload` accepts `folder_id` or `folder_path` to file a new
 upload straight into a folder.
