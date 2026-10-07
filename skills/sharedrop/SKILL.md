@@ -325,8 +325,8 @@ Use `update` for a revision so the existing URL and version history are preserve
 The `error.code` in a failed response tells you what to do. React to it rather than
 retrying blindly:
 
-- `PAGE_LIMIT_REACHED`: the free-tier page cap. `list`, ask the user what to remove, or
-  suggest upgrading.
+- `TIER_LIMIT`: the free-tier page cap, or a file kind not on the plan. For the page
+  cap, `list`, ask the user what to remove, or suggest upgrading.
 - `FILE_SIZE_EXCEEDED`: over the size limit (the message gives the cap). HTML, other
   text files and SVG images are capped at 10 MB on every plan, so upgrading does not help there. Compress
   inline images or split the document; larger content can go up as a zip, stored as a
