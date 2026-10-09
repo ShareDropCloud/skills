@@ -1,399 +1,319 @@
 ---
 name: sharedrop
-description: |
-  Share AI-generated documents through Sharedrop and read shared pages back into context. Use when the user asks to share, publish, save, or update a report, dashboard, document, slide deck, PDF, image, or other generated artefact; requests a stable URL; asks to share a page by email; or provides a Sharedrop page to fetch. Also use for HTML slide decks intended for presentation. Prefer the authenticated `sharedrop` CLI, default to private visibility, update existing pages by ID to preserve their URLs, and surface the exact URL returned by Sharedrop.
+description: Publishes generated documents to Sharedrop (sharedrop.cloud, also written ShareDrop) as stable private URLs and reads Sharedrop pages back into context, using the sharedrop CLI first and the Sharedrop MCP tools only when there is no shell. Use when the user asks to share, publish, upload, host or send a link to a report, dashboard, HTML page, slide deck, PDF, image, Markdown file or agent skill; to update or re-upload an existing Sharedrop page and keep its URL; to share a page by email, make a disappearing link or file pages into folders; or when they hand over a sharedrop.cloud link or page id to fetch or download. Not for publishing a claude.ai Artifact, sharing Google Drive, Notion or Canva files, emailing an attachment, deploying a website to a host such as Vercel or Netlify, or replies that belong in the chat.
+compatibility: Needs the sharedrop CLI 1.12.0 or later (npm package @sharedrop/cli, Node.js 20.10 or later) signed in with `sharedrop login` or a SHAREDROP_TOKEN API key. jq is optional. Without a shell, use the Sharedrop MCP server instead. Folders, disappearing links and archives need a Pro plan.
+model: claude-sonnet-5-5
 ---
 
 # Sharedrop
 
-Sharedrop turns a document you generated into a stable URL a human can open in any browser.
-The mental model that makes everything else fall into place: **one page, one URL, forever.**
-When you regenerate that report, you re-upload to the *same* page. The URL doesn't change
-and a version is recorded, so the person you sent it to keeps refreshing one link instead
-of collecting a pile of dead ones.
+Sharedrop turns a generated document into a stable URL a person can open in any browser.
+The rule that drives everything else: **one page, one link.** When a document changes,
+update the page you already made. The URL stays the same and `version` goes up by one,
+so the person you sent it to refreshes one link instead of collecting dead ones.
 
-## Reach for the CLI first
+## Contents
 
-If you can run shell commands, use the `sharedrop` CLI. It's the surface built for agents:
-one command does the whole job, it authenticates once and then works from any directory,
-and with `--json` every response is structured data you can parse. You don't have to wire up
-an MCP server or hand-roll a multi-step signed-upload dance, because the CLI does that
-for you. The MCP and REST paths near the bottom exist only for agents that *can't* open a
-shell.
+- [Before you start](#before-you-start)
+- [Publish or revise a page](#publish-or-revise-a-page)
+- [Visibility and mode](#visibility-and-mode)
+- [Share, disappearing links and folders](#share-disappearing-links-and-folders)
+- [Read a page back](#read-a-page-back)
+- [Delete only on request](#delete-only-on-request)
+- [When a command fails](#when-a-command-fails)
+- [Reference files](#reference-files)
+- [Recommended model](#recommended-model)
+- [Old patterns](#old-patterns)
 
-### Install
+## Before you start
 
-```bash
-npm install -g @sharedrop/cli      # installs the `sharedrop` binary
+**Surface (low freedom).** If you can run shell commands, use the `sharedrop` CLI. One
+command does the whole job, it signs in once and works from any directory, and `--json`
+returns structured data. Use the MCP tools only when you have no shell, and the REST API
+only when you have neither; both are in [references/mcp-and-rest.md](references/mcp-and-rest.md).
+
+**Sign-in (low freedom).** Do not run a sign-in check before every job; run the command
+you need and react to its exit code:
+
+- `command not found`: install with `npm install -g @sharedrop/cli`, or run any command
+  as `npx @sharedrop/cli <command>`. Ask before installing if the host restricts installs.
+- Exit `2` (no token found) or exit `3` (token rejected): `error.code` is
+  `UNAUTHORIZED` on read and metadata commands, and `SIGN_FAILED` with the message
+  `Unauthorized` on `upload`, `update` with a file and `check`, so go by the exit code.
+  On a machine with a browser, ask the user to run `sharedrop login`; headless or in
+  CI, the user sets `SHAREDROP_TOKEN` (key from https://sharedrop.cloud/dashboard/settings/api-keys,
+  `pages:write` scope). Never print, echo or paste the token, and do not open `.env`
+  files yourself: the CLI reads them.
+
+Run `sharedrop whoami --json` only when the job needs an account fact: a Pro feature
+(folders, disappearing links, archives), `shared` visibility, or the page cap. It returns
+`username`, `tier`, `pages_used`, `pages_limit` and `entitlements` (`folders`,
+`allowedVisibilities`). Do not repeat the account email, quota or other personal details
+to the user unless they matter to the request.
+
+Install, credential order and every command flag are in
+[references/cli-reference.md](references/cli-reference.md).
+
+## Publish or revise a page
+
+Work through these steps in order. Mark a step done only when its check passed; a failed
+check sends you back to the step named in it.
+
+```
+Sharedrop progress:
+- [ ] 1. Upload is wanted and the content is safe to share
+- [ ] 2. New page or revision decided; page id in hand for a revision
+- [ ] 3. `sharedrop check` exits 0, or every finding is understood and accepted
+- [ ] 4. Uploaded or updated; id, full_url and version captured
+- [ ] 5. Verified from the response (and served content when it matters)
+- [ ] 6. Reported with the exact full_url
 ```
 
-No global install? `npx @sharedrop/cli upload report.html` runs the same thing on demand.
+### 1. Decide whether to upload (high freedom)
 
-### Authenticate once
+Upload when you produced something the user will *look at* rather than read in the chat,
+such as a report, dashboard, summary, generated page, PDF or image, especially one they
+will revisit or forward. If they asked you to share it with a named person, upload and
+then share. If the reply belongs in chat, write it in chat.
 
-The CLI takes the first credential it finds, in this order: a `--token` flag, then the
-`SHAREDROP_TOKEN` environment variable, then a `.env` in the working directory, then a key
-saved by `sharedrop login`. (It targets `https://sharedrop.cloud` unless you pass `--url` or
-set `SHAREDROP_URL`.) Pick the one that fits where you're running:
+Do not upload secrets, credentials, private client material, or anything the user did not
+ask to make shareable. If the file contains keys, passwords or connection strings, stop
+and tell the user the variable name and line number of each one. Never print any part of
+a secret value, masked or not.
 
-- **On a machine with a browser**: run `sharedrop login` once. It opens the browser, mints
-  a CLI key, and stores it in your OS config directory, so every later command just works
-  with nothing to copy-paste.
-- **Headless, in CI, or in a sandbox with no terminal**: set `SHAREDROP_TOKEN=sd_…`
-  (create a key at https://sharedrop.cloud/dashboard/settings/api-keys). `login` needs an
-  interactive terminal; the env var doesn't, which is why it's the right choice for agents.
+### 2. New page or revision (low freedom)
 
-Run `sharedrop whoami` to confirm. It reports the username, plan tier, and remaining quota,
-which is also how you learn what the account is allowed to do before you try something.
-Use that output for the preflight decision; do not repeat the account email, quota, or other
-personal metadata to the user unless it is relevant to the request.
+A revision goes to the same page: same id, same link, `version` up by one. A wrong guess
+either duplicates a page (a dead second link, quota spent) or overwrites a page the user
+did not mean to touch, so decide from these rules only:
 
-### The commands you'll use
+- **You uploaded this document earlier in this session:** it is a revision: update that
+  page, using the id from the earlier response. Keep a note of each page you create
+  (file, `id`, `full_url`, `version`) so every later change goes to the same page.
+- **The user gave you a page id or a Sharedrop URL:** it is a revision of that page. For
+  a URL or slug, run `sharedrop get <url> --json` first and use its `data.id` and
+  `data.version`.
+- **The user used revision wording** (update, replace, new version, fix the page, same
+  link) but gave no id and you have none: run `sharedrop search "<title>" --json`. One
+  match: revise it. Several: ask which one. None: upload a new page and say so.
+- **Anything else is a new page**, even when a page with the same title exists. Never
+  update a page because its title matches. A new upload's response lists
+  `same_title_pages`; mention them to the user in one line and leave them alone.
 
-Pass `--json` so you get `{ "data": … }` on success and `{ "error": { "code", "message" } }`
-on failure (piped, non-interactive shells default to JSON anyway). The upload and update
-responses carry the live URL in `data.full_url`. Surface *that exact value* to the user. It
-is the deliverable; never reconstruct or guess a URL.
+### 3. Check before upload (low freedom)
+
+For HTML, a slide deck or a folder bundle, run the server's own checks first. They never
+publish anything:
 
 ```bash
-# UPLOAD: from a file, or pipe generated content over stdin with `-`.
-sharedrop upload report.html --title "Q4 Report" --visibility private --json
-cat report.html | sharedrop upload - --title "Generated Report" --json
+sharedrop check page.html --json                  # new page
+sharedrop check page.html --page-id <id> --json   # revision: checks with the page's mode
+sharedrop check bundle/ --json                    # folder bundle (entry index.html)
+```
 
-# Lift the URL straight out of the response:
-URL=$(cat report.html | sharedrop upload - --json | jq -r '.data.full_url')
+Read `data`. Exit 0 means it would publish as it is. Exit 1 with `data` means something
+would be removed or blocked (`would_change: true`); a non-zero exit with `error` instead
+of `data` is a failure (go to [When a command fails](#when-a-command-fails)). Act on each
+`warnings[].code`:
 
-# UPDATE an existing page: same URL, new version recorded. Pass a file to replace the
-# content, or only flags to change the title/visibility. Re-uploading without the page id
-# instead mints a *duplicate* page and burns quota, so to revise, always update by id.
+| Code | Meaning | Do this |
+|---|---|---|
+| `removed_tag`, `removed_attribute` | The sanitiser would strip these (`detail` names them). Static mode strips every `<script>`. | If the page needs its scripts, use interactive mode. Otherwise accept and say what goes. |
+| `external_refs_block_scripts` | An interactive page loads something external (`external_resource_hosts`), so none of its scripts would run. | Make it self-contained: [references/html-pages.md](references/html-pages.md#vendor-a-cdn-library). |
+| `images_extracted` | Inline `data:` images would move to hosted storage and still show. | Nothing; this alone does not set `would_change`. |
+
+`size_ok: false` means the file is over the cap: split it or bundle the images. Re-run
+`check` on the file you will upload until it exits 0 or every finding is one the user
+accepts. `scripts_would_run` tells you whether the page's JavaScript would run. For a
+slide deck, also read [references/slides.md](references/slides.md); for an agent skill,
+read [references/skill-pages.md](references/skill-pages.md) first.
+
+### 4. Upload or update (low freedom)
+
+Pass `--json`. Use exactly one of these forms:
+
+```bash
+# New single file (HTML, Markdown, PDF, CSV, DOCX, image and more). Private unless told otherwise.
+sharedrop upload report.html --title "Q4 Report" --json
+
+# New folder bundle (index.html plus relative css, js, images, fonts).
+sharedrop upload bundle/ --title "Q4 Report" --json
+
+# Revise a page, single file or folder: same id, same URL, version goes up.
 sharedrop update <id> report.html --json
-sharedrop update <id> --title "Updated Report" --visibility public --json
+sharedrop update <id> bundle/ --json
 
-# READ a page's served root content back into context: your own, a public one, or one
-# shared to you. `get` returns only metadata. Free on every tier.
-sharedrop fetch <id>                 # raw bytes to stdout, pipe into another tool
-sharedrop fetch <id> -o report.html  # …or write a file
-
-# FIND / INSPECT / MANAGE
-sharedrop list --json                       # your pages (each row carries the id)
-sharedrop search "q4 report" --json         # matches title, slug, id, and file type at once
-sharedrop get <ref> --json                  # one page's metadata
-sharedrop share <id> --email alice@example.com --json
-sharedrop download <id> -o page.zip --json  # the full artefact (root + assets) as a zip
+# Change metadata only.
+sharedrop update <id> --title "Updated Report" --json
 ```
 
-Refer to a page by the **id** from `list` or the upload response. `fetch` and `download`
-need that id specifically. `get`, `update`, `delete`, and `share` are more forgiving: a
-slug or a full page URL works there too, so you can paste whatever the user handed you.
+Generated content can be piped: `cat report.html | sharedrop upload - --title "Report" --json`.
+Images and video need a paid plan; every other supported file type
+([references/cli-reference.md](references/cli-reference.md#upload)) uploads on Free.
+Capture `data.id`, `data.full_url` and `data.version`. If the command fails, go to
+[When a command fails](#when-a-command-fails).
 
-`fetch` is not byte-preserving for every kind. Rendered kinds such as Markdown and native
-skill pages can return sanitised or rendered HTML rather than the original source file.
-Use checksums only for kinds documented as byte-preserving. For rendered kinds, verify the
-metadata with `get` and inspect the fetched page for the expected semantic content.
+### 5. Verify (low freedom)
 
-Control flow can lean on exit codes instead of scraping text: `0` success, `1` general
-error, `2` no token, `3` token rejected, `4` rate limited, `5` not found, `6` bad input.
+The upload or update response is the first proof; check it before anything else:
 
-### Organise into folders (Pro plan or higher)
+- `id` and `full_url` are the page you meant. For a revision: the same `id` as before,
+  `was_reupload: true` and `version` one higher than the last one you saw. A new id on a
+  revision means a duplicate: stop and tell the user.
+- `kind` (`slides` for a deck, `skill` for a skill page), `visibility` and `mode` are
+  what you intended.
+- `warnings` holds only what `check` already showed you; `skipped` (bundles) lists no file
+  the page needs.
+- `scripts_will_run` is `true` when the page's JavaScript must run. `mode: interactive`
+  alone does not prove it, and an owner's setting can change it later.
 
-Pro accounts can file pages into nested folders. `--folder` takes a folder id or a slash
-path like `reports/2026/q3` (missing segments are auto-created); a free key gets a
-`FOLDERS_RESTRICTED` error with an upgrade link instead of a silent root fallback.
+Look at the served content only when the request depends on something the response does
+not show, and do it in one command, for example the image count on a page with images:
 
 ```bash
-sharedrop upload report.html --folder reports/q3 --json   # file a new page as it lands
-sharedrop move <id> --folder reports/q3 --json            # move an existing page in
-sharedrop move <id> --root --json                         # ...or back to the top level
-sharedrop list --folder reports/q3 --json                 # list a folder's pages
-
-sharedrop folder create reports/2026/q3 --json            # nested; auto-creates segments
-sharedrop folder list --json                              # top-level folders (--parent <id> for children)
-sharedrop folder rename <id> "Q3 Reports" --json
-sharedrop folder move <id> --root --json                  # reparent (--parent <id>) or --root
-sharedrop folder restore <id> --json                      # undo within 30 days
+sharedrop fetch <id> -o served.html && grep -o '<img' served.html | wc -l && grep -o '<img' page.html | wc -l
 ```
 
-### Share an agent skill
+`fetch` returns rendered HTML for Markdown and skill pages, so check for the expected
+content there rather than comparing bytes. If a check fails, go back to step 3, fix the
+file and revise the same page by id. Stop after two failed repairs and tell the user what
+still fails.
 
-A standard agent skill can be a directory containing `SKILL.md` plus `references/`,
-`scripts/`, `assets/`, or agent metadata. A Sharedrop native skill page is one uploaded
-file. Inspect the source skill tree before uploading:
+### 6. Report (medium freedom)
 
-- If `SKILL.md` is genuinely self-contained, upload it directly. Sharedrop recognises
-  `SKILL.md`, `*.skill.md`, and `*.skill` as native skill pages.
-- If the skill depends on other files, do not upload `SKILL.md` alone. Create a
-  self-contained distribution copy such as `<name>.skill` by embedding the required
-  reference material and replacing local relative links. Keep the original skill
-  directory unchanged as the maintainable source.
-- Do not imply that a viewer URL is an installable multi-file skill package. If the
-  recipient needs the original directory, provide it through a distribution method that
-  preserves the complete tree.
-
-Before creating a page, search for the title. Update the existing page by id when it is a
-revision; create a new page only when no matching page exists.
-
-```bash
-sharedrop whoami --json
-sharedrop folder list --json
-sharedrop search "Ascend Notion CRM" --json
-
-# New self-contained skill:
-sharedrop upload ascend-notion-crm.skill \
-  --title "Ascend Notion CRM" \
-  --visibility private \
-  --folder Skills \
-  --json
-
-# Revision: preserve the established URL.
-sharedrop update <id> ascend-notion-crm.skill --json
-```
-
-Verify a skill upload before reporting success:
-
-```bash
-sharedrop get <id> --json
-sharedrop list --folder Skills --json
-sharedrop fetch <id> -o rendered-skill.html
-```
-
-Confirm that `get` reports `kind: "skill"`, the intended visibility, and the exact
-`full_url`; confirm the page id appears in the intended folder; then inspect the rendered
-page for the expected workflow and embedded reference content. Do not require its checksum
-to match the Markdown source.
-
-### A typical run
-
-**Input:** the user says *"make me a sales dashboard and send me the link."*
-
-```bash
-# you generated dashboard.html, then:
-URL=$(sharedrop upload dashboard.html --title "Sales Dashboard" --json | jq -r '.data.full_url')
-```
-
-**Output:** lead with what's in it, end with the link on its own line:
+Lead with what the page contains, then the URL on its own line. Use the exact
+`data.full_url`; never build a URL from the username or slug. `full_url` can be on the
+owner's own domain instead of sharedrop.cloud; that is the correct link, so do not swap
+it. The layout below is a default; the exact URL is the only fixed part.
 
 > Built your sales dashboard: 4 charts, filterable by region.
 > https://sharedrop.cloud/you/k7m9pq
 
-Later they say *"update it with March numbers"*, so you regenerate and
-`sharedrop update k7m9pq dashboard.html`; the link they already have now shows March.
+For a revision, say it is the same link with the new version. When the user later asks
+for a change, regenerate and update the same page by id.
 
-Full CLI reference: https://sharedrop.cloud/docs/cli
+## Visibility and mode
 
-## Verify every write
+- **Visibility defaults to `private`** (owner only). Publishing is the user's call: use
+  `--visibility public` only when they clearly ask to publish or say anyone can view.
+  Use `--visibility shared` only when `whoami` lists `shared` in
+  `entitlements.allowedVisibilities`; otherwise keep the page `private` and use
+  `sharedrop share`, which works on every tier.
+- **Mode applies to HTML only.** With no `--mode`, a new page takes the account's default
+  mode (interactive unless the owner changed it) and a revision keeps the page's current
+  mode. Interactive pages run their own JavaScript only when they load nothing external.
+  Pass `--mode static` when scripts should not run, and `--mode interactive` only to
+  force it. The owner can enable external network access for a page in the dashboard;
+  an agent cannot grant that to itself.
 
-An upload or update response is not sufficient proof by itself:
+## Share, disappearing links and folders
 
-1. Capture the returned page id and exact `data.full_url`.
-2. Run `sharedrop get <id> --json` and confirm title, kind, visibility, and updated time.
-3. If a folder was requested, run `sharedrop list --folder <id-or-path> --json` and confirm
-   the page id is present.
-4. Verify content in a kind-appropriate way: byte comparison only for byte-preserving
-   kinds, semantic inspection for rendered kinds.
-5. Report the exact returned URL, not one reconstructed from the username or slug.
+- **Share by email (every tier):** `sharedrop share <id> --email someone@example.com --json`.
+  On a paid tier the page becomes `shared`; on free it stays private and the grant lets the
+  recipient in. Share only with the address the user gave you.
+- **Disappearing links (Pro):** a separate link that stops working after a time or view
+  limit, for anyone holding it or only named people who sign in. It never changes the
+  page's own visibility or share list.
+  `sharedrop link create <id> --expires-in 12h --max-views 5 --json`, add
+  `--people a@x.com,b@x.com` for named people (Sharedrop emails them unless you pass
+  `--no-email`), and `--present` for a deck that opens fullscreen.
+- **Folders (Pro):** `--folder reports/q3` on `upload` (single files and bundles), or
+  `sharedrop move <id> --folder reports/q3 --json`. Missing path segments are created. A
+  free key gets `FOLDERS_RESTRICTED`; tell the user rather than uploading to the top level
+  silently.
 
-## When to use it (and when not)
+Watermarks, archives and every flag: [references/cli-reference.md](references/cli-reference.md).
 
-Upload whenever you've produced something the user will *look at* rather than read in the
-chat stream, whether a report, dashboard, summary, generated page, PDF, or image,
-especially if they'll want to revisit or forward it. If they asked you to share it with a
-named person, upload and then `share`. If they handed you a Sharedrop page and need its
-contents, `fetch`.
+## Read a page back
 
-Don't upload secrets, credentials, private client material, or anything the user didn't ask
-to make shareable. Do not use Sharedrop to dodge writing a normal answer. If the reply
-belongs in chat, just write it.
+- `sharedrop fetch <ref>` prints the page's served root content (your page, a public page,
+  or one shared with you); `-o file` writes it. Free on every tier.
+- `sharedrop download <ref> -o page.zip` gets the whole artefact (root plus assets).
+- `sharedrop get <ref> --json` returns metadata only, including `version` and
+  `scripts_will_run`.
 
-## Choosing visibility and mode
+`<ref>` is a page id, slug or full page URL, so a link from the user works as it is.
 
-- **Visibility defaults to `private`** (owner only) for good reason: publishing is the
-  user's call, not yours. Use `--visibility public` only when they clearly ask to publish or
-  say "anyone can view". `shared` (named email grants on the page) needs a paid tier; on a
-  free account, keep the page `private` and use `sharedrop share`, which grants a specific
-  person access and works on every tier.
-- **Mode applies to HTML only** and defaults to `static` (scripts get stripped, which is
-  safe and fine for most reports). Pass `--mode interactive` only when the page genuinely
-  needs to run JavaScript, and only when it is fully self-contained (see below).
-
-## Interactive pages must be fully self-contained
-
-Interactive pages run in a locked-down, offline sandbox. If one references *anything*
-external (a CDN script, a Google Font, a remote image, a tracking pixel, an external API,
-or a `<base href>`), Sharedrop can't trust it and disables **all** of its JavaScript,
-serving it as static with a banner. So build interactive pages closed: inline the CSS in
-`<style>`, the JS in `<script>`, and small images as `data:` URIs; never `fetch()` at
-runtime. Drive tabs, filters, and charts from data you've already inlined. For heavier
-assets, upload a multi-file bundle and reference them by relative path. A page that truly
-needs the open internet only works if the human owner enables external-network mode for it
-in the dashboard. An agent can't grant that to itself.
-
-## Build a slide deck and present it
-
-Sharedrop presents HTML decks fullscreen, so "make me a presentation" ends at a URL rather
-than a PowerPoint export. Decks work on **every plan**, including Free.
-
-There is no CLI flag for this and none is needed: put the marker in the HTML and any upload
-path (CLI, drag-and-drop, API, MCP) produces a deck.
-
-```html
-<meta name="sharedrop:kind" content="slides" />
-```
-
-Structure the body as **one top-level `<section>` per slide**. Present shows one at a time
-and steps through them on arrow key, space, click, or tap:
-
-```html
-<body>
-  <section><h1>Q3 review</h1></section>
-  <section>
-    <h2>Three shifts</h2>
-    <ul>
-      <li data-sd-fragment>Pilots became practice</li>
-      <li data-sd-fragment>Hours returned to the business</li>
-    </ul>
-  </section>
-</body>
-```
-
-Two hooks make a deck feel like a presenter tool, and both are plain CSS you write yourself:
-
-- **`data-sd-fragment`** on any element inside a slide reveals it one step at a time, the
-  way a bullet list builds. The next step only moves to the next slide once every fragment
-  is shown. They fade in by default; style the reveal yourself off `__sd-frag-visible`.
-- **`__sd-active`** is the class Present adds to the slide currently on screen. Key an
-  entrance animation to it and the slide animates in as it lands.
-
-Present never restyles your deck. Your CSS is exactly what the audience sees.
-
-```bash
-# deck.html carries the marker, so this is just a normal upload
-URL=$(sharedrop upload deck.html --title "Q3 review" --json | jq -r '.data.full_url')
-sharedrop get <id> --json | jq -r '.data.kind'    # -> slides, check before claiming success
-
-# present it: add ?present=1 to the page URL
-echo "$URL?present=1"
-```
-
-**Static or interactive?** A static deck still animates. CSS transitions, fragments, and
-slide-entry classes all work, because Present supplies the navigation. Upload
-`--mode interactive` only when the deck's *own* JavaScript must run (count-ups, charts,
-canvas); Present keeps driving the slides either way. The self-contained rule above still
-applies, so inline everything.
-
-For an unattended screen, add `autoplay=<whole seconds>` to advance and loop forever:
-`…?present=1&autoplay=15`.
-
-**On MCP or REST instead of a shell:** pass `slides: true` to **`finalize_upload`** (it is
-ignored on `sign`, and on non-HTML files). To hand someone a link that opens straight into
-fullscreen on a TV, Pro accounts can create a present-only disappearing link with
-`create_ephemeral_link({ page_id, expires_in_seconds, present_only: true })`.
-
-Full guide: https://sharedrop.cloud/docs/slides
-
-## Sharing, expiring links, and watermarks
-
-`sharedrop share <id> --email someone@example.com` grants one person access; on a paid tier
-the page auto-promotes to `shared` visibility, and on free tier it stays private but the
-recipient can still open it through the grant.
-
-Pro accounts can also create **disappearing links**: a separate link that expires by time or
-view count, for anyone holding it or only for named people who sign in
-(`create_ephemeral_link` with `audience: "people"` and `emails`). A disappearing link never
-changes the page's own visibility or share list, so it is safe on a private or shared page.
-On a "people" link Sharedrop emails each person the link and its limits (pass `notify: false`
-if the user wants to send it themselves).
-CLI releases after 1.10.0 have `sharedrop link create <id> [--people a@x.com,b@x.com]
---expires-in 12h --max-views 5`. The **watermark overlay** is MCP (`update_page` with
-`watermark_enabled`) or dashboard only.
-
-## Destructive actions
+## Delete only on request
 
 Delete a page or folder only when the user explicitly asks. Resolve the exact target with
-`search`, `get`, or `folder list` first; never infer a destructive target from a partial
-name. State what will be removed and whether it is recoverable before running:
+`search`, `get` or `folder list` first; never infer it from a partial name. Say what will
+be removed and whether it can be restored before running:
 
 ```bash
 sharedrop delete <exact-page-id> --json
 sharedrop folder delete <exact-folder-id> --force --json
 ```
 
-Do not treat cleanup, replacement, or quota pressure as implicit permission to delete.
-Use `update` for a revision so the existing URL and version history are preserved.
+Cleanup, replacement, a duplicate or quota pressure is not permission to delete. Use
+`update` for a revision so the URL and version history survive.
 
-## When something goes wrong
+## When a command fails
 
-The `error.code` in a failed response tells you what to do. React to it rather than
-retrying blindly:
+Read `error.code` (with `--json`) and the exit code, and act on them rather than retrying
+blindly:
 
-- `TIER_LIMIT`: the free-tier page cap, or a file kind not on the plan. For the page
-  cap, `list`, ask the user what to remove, or suggest upgrading.
-- `FILE_SIZE_EXCEEDED`: over the size limit (the message gives the cap). HTML, other
-  text files and SVG images are capped at 10 MB on every plan, so upgrading does not help there. Compress
-  inline images or split the document; larger content can go up as a zip, stored as a
-  download-only archive (Pro and Team).
-- `TIER_LIMIT`: a paid-only action on a free plan (e.g. `shared` visibility, an image
-  upload). Tell the user it needs an upgrade instead of retrying; for `shared` specifically,
-  fall back to `private` + `share`, which works anywhere.
-- `UNAUTHORIZED`: the token is missing, revoked, or read-only. Re-run `sharedrop login`, or
-  point the user at https://sharedrop.cloud/dashboard/settings/api-keys for a key with
-  `pages:write` scope.
+| `error.code` | Do this |
+|---|---|
+| `UNAUTHORIZED`, or `SIGN_FAILED` with message `Unauthorized` (exit `3`) | Token revoked or read-only. Ask for `sharedrop login` or a key with `pages:write` scope. `upload`, `update` with a file and `check` report a rejected token as `SIGN_FAILED`. |
+| `PAGE_NOT_FOUND` | Wrong id or no access. Re-resolve with `get` or `search`; do not create a new page in its place without asking. |
+| `TIER_LIMIT` | The page cap, or a feature or file kind not on the plan. List pages and ask what to remove, or suggest upgrading; never delete on your own. For `shared` visibility, fall back to `private` plus `share`. |
+| `FILE_SIZE_EXCEEDED` | Over the cap in the message. HTML, text and SVG are capped at 10 MB on every plan, so upgrading does not help: split the page or move images into a folder bundle. |
+| `STORAGE_LIMIT` | Storage is full. Relay the message; emptying the trash is the user's call. |
+| `FOLDERS_RESTRICTED` | Folders need Pro. Tell the user. |
 
-## If you can't use the CLI
+Exit codes: `0` success, `1` general error (and `check` finding changes), `2` no token
+found, `3` token rejected or action forbidden (read `error.code`: `FOLDERS_RESTRICTED` is
+a plan limit, not a sign-in problem), `4` rate limited (wait, then retry once), `5` not
+found, `6` bad input (fix the path or flag named in the message), `7` plan or billing
+limit (`TIER_LIMIT`, `FILE_SIZE_EXCEEDED`, `STORAGE_LIMIT`).
 
-### MCP server
+Retry a failed write at most once after fixing the cause. If it fails again, stop and
+report the code and message.
 
-For MCP-native clients with no shell. It's remote-only HTTP at
-`https://sharedrop.cloud/api/mcp`, with OAuth on first connect, or a Bearer `sd_` key:
+## Reference files
 
-```json
-{
-  "mcpServers": {
-    "sharedrop": { "type": "http", "url": "https://sharedrop.cloud/api/mcp" }
-  }
-}
-```
+Read only the one the task needs:
 
-Upload without base64 by streaming: `create_upload` → HTTP `PUT` the bytes to the returned
-`upload_url` (`Authorization: Bearer <upload_token>`) → `finalize_upload`. Every file,
-including HTML, uses the same streamed pipeline; supply `page_id` when replacing an existing
-page. Use `fetch_page` to read content back. The rest map onto the CLI verbs:
-`whoami`, `get_page`, `list_pages`, `update_page`, `delete_page`, `share_with_email`,
-`share_page`, `list_shares`, `revoke_share`, `create_ephemeral_link`,
-`list_ephemeral_links`, `update_ephemeral_link`, `revoke_ephemeral_link`, `finalize_bundle`. Pro accounts also get
-folder tools (`create_folder`, `list_folders`, `move_page`, `delete_folder`,
-`restore_page`), and `finalize_upload` accepts `folder_id` or `folder_path` to file a new
-upload straight into a folder.
-Setup per client: https://sharedrop.cloud/dashboard/settings/mcp
+- [references/cli-reference.md](references/cli-reference.md): install, sign-in order, every
+  command and flag, the full JSON fields, exit codes, archives and watermarks. Read for
+  any flag or field not shown above.
+- [references/html-pages.md](references/html-pages.md): interactive pages, folder bundles,
+  vendoring a CDN library, inline images, checking served content. Read when `check`
+  reports a finding or the page has scripts, images or external files.
+- [references/slides.md](references/slides.md): building and presenting a slide deck.
+- [references/skill-pages.md](references/skill-pages.md): sharing an agent skill as a page.
+- [references/mcp-and-rest.md](references/mcp-and-rest.md): MCP tool names and the REST
+  flow, for hosts without a shell.
+- [references/model-support.md](references/model-support.md): tested models, hosts and
+  results. For the person choosing a model; no task needs it.
 
-### REST API
+## Recommended model
 
-The last resort, with neither a shell nor MCP. Uploading is a streamed three-step flow for
-any file type: **sign → PUT the bytes → finalize**. (The old inline `POST /api/v1/pages`
-create is retired and now returns `410 Gone`; don't reach for it.)
+- **Recommended:** Claude Sonnet 5.5 (`claude-sonnet-5-5`), set by `model:` in the
+  frontmatter above. Provisional for this version until its eval rerun.
+- **Supported host:** Claude Code.
+- **Tested fallback:** Claude Opus 5.5 (`claude-opus-5-5`).
+- **Limitations:** the `model` field works only in Claude Code. Other hosts, such as Codex
+  or claude.ai, ignore it or need their own model setting, and are untested. The override
+  lasts for the current turn only, and an organisation's model restrictions can block it.
+  In headless `claude -p` runs on Claude Code 2.1.292 (7 Oct 2026) the field was read but
+  did not switch the model: Opus served every turn. Until a run shows it working, choose
+  Sonnet yourself with `--model claude-sonnet-5-5` or `/model`.
 
-```bash
-# 1. sign: reserve a key and mint a 5-minute upload token
-SIGN=$(curl -s -X POST https://sharedrop.cloud/api/upload/sign \
-  -H "Authorization: Bearer sd_YOUR_KEY" -H "Content-Type: application/json" \
-  -d '{"filename":"report.html","content_type":"text/html","size_bytes":'"$(wc -c <report.html)"'}')
-UPLOAD_URL=$(echo "$SIGN" | jq -r '.data.upload_url')
-UPLOAD_TOKEN=$(echo "$SIGN" | jq -r '.data.upload_token')
-OBJECT_KEY=$(echo "$SIGN" | jq -r '.data.object_key')
+Evidence and the support matrix: [references/model-support.md](references/model-support.md).
 
-# 2. PUT the raw bytes straight to storage (no request-body size cap)
-curl -X PUT "$UPLOAD_URL" \
-  -H "Authorization: Bearer $UPLOAD_TOKEN" -H "Content-Type: text/html" \
-  --data-binary @report.html
+## Old patterns
 
-# 3. finalize: sanitise + publish; add "page_id":"<id>" to update an existing page
-curl -X POST https://sharedrop.cloud/api/upload/finalize \
-  -H "Authorization: Bearer sd_YOUR_KEY" -H "Content-Type: application/json" \
-  -d '{"object_key":"'"$OBJECT_KEY"'","upload_token":"'"$UPLOAD_TOKEN"'","title":"Q4 Report","visibility":"private"}'
+<details>
+<summary>Superseded methods</summary>
 
-# Read a page's raw content (two-step token handoff)
-FETCH_URL=$(curl -s -H "Authorization: Bearer sd_YOUR_KEY" \
-  https://sharedrop.cloud/api/v1/pages/<page_id>/fetch | jq -r '.data.fetch_url')
-curl -s "$FETCH_URL" -o page.html      # no auth header, the URL token is the credential
-```
+- `POST /api/v1/pages` (inline create) is retired and returns `410 Gone`. Use the CLI, or
+  the streamed sign, PUT, finalize flow in [references/mcp-and-rest.md](references/mcp-and-rest.md).
+- CLI releases before 1.12.0 defaulted to `--mode static`, refused `update <id> <folder>`,
+  ignored `--folder` on folder bundles, exited 2 for a rejected token and had no `check`
+  command or `version` field. Update the CLI rather than working around them.
+- CLI releases up to 1.10.0 had no `link` command; disappearing links needed the MCP tool
+  `Sharedrop:create_ephemeral_link`.
 
-Full API reference: https://sharedrop.cloud/docs/api-reference
+</details>

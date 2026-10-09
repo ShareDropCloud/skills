@@ -34,14 +34,18 @@ More: [docs](https://sharedrop.cloud/docs) · [llms.txt](https://sharedrop.cloud
 
 ## What is an agent skill?
 
-A skill is a markdown instruction file (`SKILL.md`) that teaches an AI agent *when* and
-*how* to use a capability: judgment, not plumbing. Here the plumbing is the **`sharedrop`
+A skill is a folder of markdown instructions (`SKILL.md` plus reference files it links
+to) that teaches an AI agent *when* and *how* to use a capability: judgment, not plumbing. Here the plumbing is the **`sharedrop`
 CLI** (with the hosted MCP server and REST API as fallbacks); the skill makes the agent
 reach for the right surface and use it well.
 
 ## The skill in this repo
 
-### `sharedrop`: [skills/sharedrop/SKILL.md](skills/sharedrop/SKILL.md)
+### `sharedrop`: [skills/sharedrop/](skills/sharedrop/SKILL.md)
+
+`SKILL.md` is the entry point; `references/` holds the CLI reference, HTML pages, slide
+decks, skill pages, MCP and REST, and the model support record, each read only when a
+task needs it.
 
 Teaches an agent to share generated documents through Sharedrop instead of pasting walls
 of HTML into chat or attaching files. It **leads with the CLI** as the best agent surface
@@ -50,11 +54,13 @@ and falls back to MCP/REST only when there's no shell. Specifically:
 - **When to upload**: any time it produces a report, dashboard, summary, or other
   rendered artifact the user should see, archive, link to, or hand to someone else; and
   when *not* to (secrets, anything the user didn't ask to publish).
-- **The CLI**: `sharedrop upload` (a file or piped stdin), `update <id>` to revise a
-  page in place, `fetch`/`download` to read a page back, `share --email`, `list`/`get`.
+- **The CLI**: `sharedrop check` before an upload, `sharedrop upload` (a file, a folder
+  or piped stdin), `update <id>` to revise a page in place, `fetch`/`download` to read a
+  page back, `share --email`, `list`/`get`.
   Authenticate once with `sharedrop login` or `SHAREDROP_TOKEN`.
-- **Stable URLs**: re-upload with the same page id so iterative work keeps one link and
-  accumulates version history, instead of minting duplicate pages.
+- **Stable URLs**: a revision updates the same page by id, so iterative work keeps one
+  link and its `version` goes up, instead of minting duplicate pages. A page is never
+  updated just because its title matches.
 - **Sensible visibility**: default `private`; `public` only on explicit request; share
   with specific people by email; disappearing links on Pro.
 - **Self-contained interactive pages**: interactive HTML runs scripts only when it
@@ -84,18 +90,18 @@ your machine and installs globally for each:
 npx skills add ShareDropCloud/skills --skill sharedrop -g
 ```
 
-No npm? The fallback installer drops `SKILL.md` straight into each agent's global skills
-directory:
+No npm? The fallback installer downloads every file of the skill into each agent's
+global skills directory:
 
 ```bash
 curl -fsSL https://sharedrop.cloud/skill.sh | bash
 ```
 
-Per-project instead of global: drop the `-g` flag, or fetch the file directly:
+Per-project instead of global: drop the `-g` flag, or unpack the zip into the project:
 
 ```bash
-mkdir -p .claude/skills/sharedrop
-curl -fsSL https://sharedrop.cloud/sharedrop-skill.md -o .claude/skills/sharedrop/SKILL.md
+curl -fsSL https://sharedrop.cloud/sharedrop-skill.zip -o sharedrop-skill.zip
+unzip sharedrop-skill.zip -d .claude/skills
 ```
 
 ### Claude Desktop / claude.ai
@@ -159,12 +165,12 @@ reply with a `sharedrop.cloud` URL on its own line.
 
 This is a **read-only mirror** for the skills CLI. The canonical skill source lives in
 the Sharedrop app repo and is published at
-[sharedrop.cloud/sharedrop-skill.md](https://sharedrop.cloud/sharedrop-skill.md); both the
-skill and this README are regenerated here by an automated sync, so they always match the
-live docs. Issues and feedback: hello@sharedrop.cloud.
+[sharedrop.cloud/sharedrop-skill/SKILL.md](https://sharedrop.cloud/sharedrop-skill/SKILL.md);
+both the skill folder and this README are regenerated here by an automated sync, so they
+always match the live docs. Issues and feedback: hello@sharedrop.cloud.
 
 Skills run with your agent's full permissions. Read
-[skills/sharedrop/SKILL.md](skills/sharedrop/SKILL.md) before installing, as you should
-for any skill.
+[skills/sharedrop/](skills/sharedrop/SKILL.md) before installing, as you should for any
+skill.
 
 Licensed under [MIT](LICENSE).
