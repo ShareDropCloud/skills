@@ -43,6 +43,13 @@ no pre-check tool on MCP, so read `warnings` from the finalize result instead.
    `Sharedrop:finalize_bundle` once with every `{ path, object_key, upload_token }`.
    Exactly one path is `index.html`. To replace a bundle page, pass the same `page_id` to
    the `index.html` file's `Sharedrop:create_upload` and to `Sharedrop:finalize_bundle`.
+6. Team workspaces: when the user mentions a team or workspace, call
+   `Sharedrop:list_workspaces` and pass the matching `slug` (the workspace address) as
+   `workspace` to `Sharedrop:create_upload` and `Sharedrop:finalize_upload`. Never ask the
+   user for a workspace id. A revision of a workspace page needs only `page_id`. Check the
+   workspace's `can_upload` first (false for a read-only viewer), and do not edit someone
+   else's page unless `can_edit_all_pages` is true (owners only; a member edits only pages
+   they created). `can_upload` reflects your role; a workspace with a billing problem refuses uploads with 402 until the owner fixes billing.
 
 Call `Sharedrop:whoami` when you need the username, tier or entitlements (images and
 video need a paid plan on MCP uploads too). Verify from the finalize result as in SKILL.md
@@ -54,10 +61,11 @@ and `Sharedrop:fetch_page` returns a short-lived `fetch_url` to GET with no auth
 | Job | Tool |
 |---|---|
 | List or inspect | `Sharedrop:list_pages`, `Sharedrop:get_page` |
+| Team workspaces | `Sharedrop:list_workspaces` (each has `id`, `name`, `slug`, `role`, `tier`, `can_upload`, `can_edit_all_pages`); `workspace` on `list_pages`, `create_upload`, `finalize_upload`, `finalize_bundle`, `list_folders`, `create_folder`, `create_reservation` and `list_reservations` takes the id or address |
 | Metadata, watermark | `Sharedrop:update_page` (`watermark_enabled` for the overlay) |
 | Share by email | `Sharedrop:share_with_email`, `Sharedrop:share_page`, `Sharedrop:list_shares`, `Sharedrop:revoke_share` |
 | Disappearing links (Pro) | `Sharedrop:create_ephemeral_link`, `Sharedrop:list_ephemeral_links`, `Sharedrop:update_ephemeral_link`, `Sharedrop:revoke_ephemeral_link` |
-| Folders (Pro) | `Sharedrop:create_folder`, `Sharedrop:list_folders`, `Sharedrop:move_page`, `Sharedrop:delete_folder`, `Sharedrop:restore_page` |
+| Folders (Pro, or Team in a workspace) | `Sharedrop:create_folder`, `Sharedrop:list_folders`, `Sharedrop:move_page`, `Sharedrop:delete_folder`, `Sharedrop:restore_page`. `move_page` and `delete_folder` act in the page's or folder's own space; with `workspace` on `finalize_upload`, `folder_path` resolves in that workspace's folders |
 | Delete (explicit request only) | `Sharedrop:delete_page` |
 
 `Sharedrop:create_ephemeral_link` takes `page_id` plus `expires_in_seconds`, `max_views`
@@ -104,6 +112,10 @@ curl -X PUT "$UPLOAD_URL" \
 curl -X POST https://sharedrop.cloud/api/upload/finalize \
   -H "Authorization: Bearer $SHAREDROP_TOKEN" -H "Content-Type: application/json" \
   -d '{"object_key":"'"$OBJECT_KEY"'","upload_token":"'"$UPLOAD_TOKEN"'","title":"Q4 Report","visibility":"private"}'
+
+# Team workspaces: the id and address (slug) of each; pass either as "workspace" to sign
+# and as "workspace_id" to finalize and GET /api/v1/pages
+curl -s -H "Authorization: Bearer $SHAREDROP_TOKEN" https://sharedrop.cloud/api/v1/workspaces
 
 # Read a page's raw content (two-step token handoff)
 FETCH_URL=$(curl -s -H "Authorization: Bearer $SHAREDROP_TOKEN" \

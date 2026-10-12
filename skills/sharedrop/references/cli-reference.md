@@ -1,7 +1,7 @@
 # Sharedrop CLI reference
 
 Every command, flag and JSON field the skill uses, checked against the `@sharedrop/cli`
-1.12.0 source. Full upstream reference: https://sharedrop.cloud/docs/cli
+1.13.0 source. Full upstream reference: https://sharedrop.cloud/docs/cli
 
 ## Contents
 
@@ -15,6 +15,7 @@ Every command, flag and JSON field the skill uses, checked against the `@sharedr
 - [Update](#update)
 - [Read back](#read-back)
 - [Find and inspect](#find-and-inspect)
+- [Workspaces](#workspaces)
 - [Share and disappearing links](#share-and-disappearing-links)
 - [Folders and trash](#folders-and-trash)
 - [Large files](#large-files)
@@ -26,7 +27,7 @@ Every command, flag and JSON field the skill uses, checked against the `@sharedr
 ```bash
 npm install -g @sharedrop/cli      # installs the `sharedrop` binary (needs Node.js 20.10+)
 npx @sharedrop/cli <command>       # same thing without a global install
-sharedrop --version                # confirm it runs; `check` needs 1.12.0 or later
+sharedrop --version                # confirm it runs; `check` needs 1.12.0 or later, `workspaces` 1.13.0
 ```
 
 ## Sign-in and target
@@ -56,8 +57,8 @@ The CLI targets `https://sharedrop.cloud` unless `--url` or `SHAREDROP_URL` says
 With `--json` (the default in piped, non-interactive shells) success is `{ "data": ... }`
 and failure is `{ "error": { "code", "message" } }`. A plan or billing refusal puts the
 whole billing envelope under `error` (`code`, `message`, `currentTier`, `upgradeUrl`, and
-`limitBytes` for a size refusal). `folder list` is the exception on success: it returns
-`{ "folders": [ ... ] }` with no `data` wrapper.
+`limitBytes` for a size refusal). `folder list` and `trash list` are the exceptions on success: they
+return `{ "folders": [ ... ] }` and `{ "items": [ ... ] }` with no `data` wrapper.
 
 ```bash
 URL=$(sharedrop upload report.html --json | jq -r '.data.full_url')
@@ -100,7 +101,7 @@ prints what it found. It never publishes. It needs the same sign-in as `upload`.
 | `--page-id <id>` | Check as a re-upload of this page, with its mode |
 | `--slides` | Check a single HTML file as a slide deck |
 | `--entry <file>` | Folder: entry HTML relative to the folder (default `index.html`) |
-| `--workspace <id>` | Check as an upload to this workspace |
+| `--workspace <id or address>` | Check as an upload to this workspace |
 | `--json` | Force JSON output |
 
 `data` fields: `kind`, `mode_effective`, `detected_slides`, `size_ok`, `size_bytes`,
@@ -134,9 +135,10 @@ in `skipped`.
 | `--mode <mode>` | HTML only: `static` or `interactive`. Default: the account default for a new page (interactive unless the owner changed it); a re-upload keeps the page's mode |
 | `--entry <file>` | Folder uploads: entry HTML relative to the folder (default `index.html`) |
 | `--page-id <id>` | Replace an existing page's content and keep its URL |
-| `--folder <id or path>` | File the new page in a folder (Pro), single file or bundle; missing segments are created |
+| `--folder <id or path>` | File the new page in a folder (Pro, or the workspace's with Team), single file or bundle; missing segments are created in the target space |
 | `--to <slug or id>` | Claim a reserved address made with `sharedrop reserve` (single files only) |
-| `--workspace <id>` | Upload to a workspace |
+| `--workspace <id or address>` | Upload to a workspace (see [Workspaces](#workspaces)) |
+| `--personal` | Upload to the personal space even when a default workspace is set |
 | `--json` | Force JSON output |
 
 ## Upload and update JSON
@@ -190,6 +192,9 @@ keeps the page's mode) and `--slug <slug>` (Pro, public pages only; the old addr
 redirects). A folder must have `index.html` as its entry; for another entry use
 `sharedrop upload <folder> --entry <file> --page-id <id>`.
 
+A workspace page needs no `--workspace`: Sharedrop finds the page's workspace. The same
+holds for `upload --page-id`.
+
 Uploading again without the id creates a duplicate page and spends quota.
 
 ## Read back
@@ -215,9 +220,54 @@ sharedrop search "q4 report" --json      # matches title, slug, id and file type
 sharedrop get <ref> --json               # one page's metadata
 ```
 
+`list` and `search` take `--workspace <id or address>` for a workspace's pages.
+
 List and search rows carry `id`, `slug`, `title`, `kind`, `mode`, `version`,
 `visibility`, `full_url`, `created_at` and `updated_at`. `get` also carries
 `scripts_will_run` and `external_resource_hosts`.
+
+## Workspaces
+
+```bash
+sharedrop workspaces --json      # the team workspaces this account belongs to
+```
+
+```json
+{"data":{"workspaces":[{"id":"6f1c2a9e-1b7d-4c52-9a51-0d3f8e2b7a10","name":"Ascend Intelligence","slug":"ascend","role":"owner","tier":"team","can_upload":true,"can_edit_all_pages":true}]}}
+```
+
+`can_upload` is true for an owner or member and false for a read-only viewer;
+`can_edit_all_pages` is true only for an owner (a member edits only pages they created).
+Check `can_upload` before uploading, and do not edit someone else's page unless
+`can_edit_all_pages` is true. Text output shows `access: upload, edit all pages` (owner),
+`access: upload, edit own pages` (member) or `access: read only` (viewer).
+`can_upload` reflects your role; a workspace with a billing problem refuses uploads with 402 until the owner fixes billing.
+
+`slug` is the workspace address. Pass it (or the `id`) to `--workspace` on `upload`,
+`check`, `archive`, `list`, `search`, `reserve`, `reservations list`, `trash list`,
+`folder create` and `folder list`. An
+empty list means uploads go to the personal space. A workspace key (`sdw_`) sees only its own
+workspace. `whoami --json` carries the same list as `workspaces`, plus `scope` (`personal`
+or `workspace`) and `workspace` (the workspace an `sdw_` key is bound to, else `null`). A
+workspace the account is not a member of fails with
+`Workspace not found or you are not a member` and exit `5`.
+
+### Default workspace (CLI 1.13.0)
+
+```bash
+sharedrop workspaces use ascend --json   # check membership, then save it for this server URL
+sharedrop workspaces use --clear --json  # remove it
+```
+
+Commands that take `--workspace` pick, first match wins: `--workspace`, `--personal` (the
+personal space; with `--workspace` it exits `6`), `SHAREDROP_WORKSPACE` (environment, then
+`.env`), the saved default, the personal space. The saved default is per server URL. Other
+commands ignore it, and so do `--page-id` re-uploads (the server finds the page's
+workspace). `--to <slug>` looks the slug up in the default workspace; the page lands in the
+reservation's own workspace. An `sdw_` key ignores it. A default the account no longer belongs to
+fails with exit `5`, never a personal fallback. `whoami --json` and `workspaces --json` add
+`default_workspace`: `{"id","slug","source"}` (`env`, `dotenv` or `saved`) or `null`.
+Scripts should pass `--workspace` explicitly; the default is for interactive sessions.
 
 ## Share and disappearing links
 
@@ -250,7 +300,8 @@ sharedrop link revoke <ref> <link-id> --json                           # page is
 
 ## Folders and trash
 
-Folders need Pro. A free key gets `FOLDERS_RESTRICTED` (exit `3`) with an upgrade link.
+Personal folders need Pro; a Team workspace has its own folders, included with Team. Without
+folders on the plan the CLI gets `FOLDERS_RESTRICTED` (exit `3`) with an upgrade link.
 
 ```bash
 sharedrop folder create reports/2026/q3 --json      # nested; creates missing segments
@@ -262,8 +313,25 @@ sharedrop move <id> --folder reports/q3 --json     # move a page in
 sharedrop move <id> --root --json                  # or back to the top level
 ```
 
-`sharedrop trash empty` permanently deletes everything in the trash. Run it only when the
-user asks for exactly that.
+Workspace folders (CLI 1.13.0): `folder create` and `folder list` take `--workspace <address>`
+(or the default workspace) and `--personal`. `folder rename`, `move`, `delete`, `restore` and
+`move <page>` need no workspace: they act in the folder's or page's own space, so
+`move <id> --folder <path>` finds and creates the path in a workspace page's own workspace.
+Owners and members manage workspace folders, viewers only list them. A member moving or
+deleting a folder that holds another member's pages gets exit `3` and `This folder holds pages
+created by other members. Only a workspace owner can move or delete it.` A folder in the
+other space gets exit `6` and `A folder and its pages must be in the same space.`
+
+```bash
+sharedrop folder create reports --workspace ascend --json
+sharedrop folder list --workspace ascend --json
+sharedrop upload report.html --workspace ascend --folder reports --json
+```
+
+`sharedrop trash list --json` lists what is in the trash (`--workspace <address>` for a
+workspace's). `sharedrop trash empty` permanently deletes everything in the trash (with `--workspace`, a
+workspace owner removes every item and a member only the items they created plus the trashed
+folders). Run it only when the user asks for exactly that.
 
 ## Large files
 

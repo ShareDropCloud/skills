@@ -2,11 +2,32 @@
 
 ## Contents
 
+- [Unreleased (team workspaces for CLI 1.13.0)](#unreleased-team-workspaces-for-cli-1130)
 - [2026.10.07 (multi-file package for CLI 1.12.0)](#20261007-multi-file-package-for-cli-1120)
 - [Changes from the previous public skill](#changes-from-the-previous-public-skill)
 - [Changes from the audit rebuild](#changes-from-the-audit-rebuild)
 - [Deviations kept on purpose](#deviations-kept-on-purpose)
 - [Release record](#release-record)
+
+## Unreleased (team workspaces for CLI 1.13.0)
+
+Teaches team workspaces (GitLab sharedrop #408 and #385):
+
+- New `## Team workspaces` section in SKILL.md: when the user mentions a team or a
+  workspace, run `sharedrop workspaces --json` and pass the address with `--workspace`.
+  Never ask the user for a workspace id. A workspace page is revised with `update <id>`
+  alone, and cannot go into a folder.
+- `references/cli-reference.md`: a Workspaces section, `--workspace` takes an id or an
+  address, `trash list`, and the `whoami` fields `scope`, `workspace` and `workspaces`.
+- `references/mcp-and-rest.md`: `Sharedrop:list_workspaces` and `GET /api/v1/workspaces`.
+- `compatibility` now notes that team workspaces need CLI 1.13.0.
+- Each workspace now carries `can_upload` and `can_edit_all_pages`. The skill shows what
+  owner, member and viewer can do, and tells the agent to check `can_upload` before
+  uploading and not to edit someone else's page unless `can_edit_all_pages` is true.
+- Workspace folders (#410): a workspace has its own folders with Team. `folder create` and
+  `folder list` take `--workspace`; `move --folder` and `upload --folder` use the page's or
+  upload's own space; MCP `list_folders` and `create_folder` take `workspace`. The note that
+  a workspace page cannot go into a folder is gone.
 
 ## 2026.10.07 (multi-file package for CLI 1.12.0)
 

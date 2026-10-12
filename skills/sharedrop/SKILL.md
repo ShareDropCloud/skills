@@ -1,7 +1,7 @@
 ---
 name: sharedrop
 description: Publishes generated documents to Sharedrop (sharedrop.cloud, also written ShareDrop) as stable private URLs and reads Sharedrop pages back into context, using the sharedrop CLI first and the Sharedrop MCP tools only when there is no shell. Use when the user asks to share, publish, upload, host or send a link to a report, dashboard, HTML page, slide deck, PDF, image, Markdown file or agent skill; to update or re-upload an existing Sharedrop page and keep its URL; to share a page by email, make a disappearing link or file pages into folders; or when they hand over a sharedrop.cloud link or page id to fetch or download. Not for publishing a claude.ai Artifact, sharing Google Drive, Notion or Canva files, emailing an attachment, deploying a website to a host such as Vercel or Netlify, or replies that belong in the chat.
-compatibility: Needs the sharedrop CLI 1.12.0 or later (npm package @sharedrop/cli, Node.js 20.10 or later) signed in with `sharedrop login` or a SHAREDROP_TOKEN API key. jq is optional. Without a shell, use the Sharedrop MCP server instead. Folders, disappearing links and archives need a Pro plan.
+compatibility: Needs the sharedrop CLI 1.12.0 or later (1.13.0 for team workspaces) (npm package @sharedrop/cli, Node.js 20.10 or later) signed in with `sharedrop login` or a SHAREDROP_TOKEN API key. jq is optional. Without a shell, use the Sharedrop MCP server instead. Personal folders, disappearing links and archives need a Pro plan; workspace folders come with Team.
 model: claude-sonnet-5-5
 ---
 
@@ -17,6 +17,7 @@ so the person you sent it to refreshes one link instead of collecting dead ones.
 - [Before you start](#before-you-start)
 - [Publish or revise a page](#publish-or-revise-a-page)
 - [Visibility and mode](#visibility-and-mode)
+- [Team workspaces](#team-workspaces)
 - [Share, disappearing links and folders](#share-disappearing-links-and-folders)
 - [Read a page back](#read-a-page-back)
 - [Delete only on request](#delete-only-on-request)
@@ -47,8 +48,8 @@ you need and react to its exit code:
 
 Run `sharedrop whoami --json` only when the job needs an account fact: a Pro feature
 (folders, disappearing links, archives), `shared` visibility, or the page cap. It returns
-`username`, `tier`, `pages_used`, `pages_limit` and `entitlements` (`folders`,
-`allowedVisibilities`). Do not repeat the account email, quota or other personal details
+`username`, `tier`, `pages_used`, `pages_limit`, `entitlements` (`folders`,
+`allowedVisibilities`) and `workspaces`. Do not repeat the account email, quota or other personal details
 to the user unless they matter to the request.
 
 Install, credential order and every command flag are in
@@ -206,6 +207,42 @@ for a change, regenerate and update the same page by id.
   force it. The owner can enable external network access for a page in the dashboard;
   an agent cannot grant that to itself.
 
+## Team workspaces
+
+When the user mentions a team, a workspace or a client space, run
+`sharedrop workspaces --json` and pass the matching `slug` (the workspace address) with
+`--workspace`, for example `sharedrop upload report.html --workspace ascend --json`. Never
+ask the user for a workspace id. If no workspace matches, name the ones that exist and ask
+which; an empty list means uploads go to their personal space.
+
+Each workspace carries the user's access. Check `can_upload` before uploading to a
+workspace, and do not try to edit someone else's page unless `can_edit_all_pages` is true:
+
+| Role | `can_upload` | `can_edit_all_pages` | Can do |
+|---|---|---|---|
+| owner | `true` | `true` | Upload; edit, re-upload and delete every page |
+| member | `true` | `false` | Upload; edit, re-upload and delete only pages they created |
+| viewer | `false` | `false` | Read only |
+
+`can_upload` reflects your role; a workspace with a billing problem refuses uploads with 402 until the owner fixes billing.
+
+- `--workspace` works on `upload`, `check`, `archive`, `list`, `search`, `reserve`,
+  `reservations list`, `trash list`, `folder create` and `folder list`.
+- To revise a workspace page, `sharedrop update <id> <file> --json` is enough; Sharedrop
+  finds the page's workspace.
+- A workspace has its own folders (Team plan, whatever the user's personal plan):
+  `sharedrop folder list --workspace <address> --json`, and `--folder <path>` on a workspace
+  upload files into them. `move <id> --folder <path>` uses the page's own space with no
+  `--workspace`. Owners and members manage folders, viewers only list them, and a member
+  cannot move or delete a folder holding another member's pages (exit `3`, tell the user).
+- `Workspace not found or you are not a member` (exit `5`) means a wrong address: list the
+  workspaces again rather than guessing.
+- A default workspace (`sharedrop workspaces use <address>`, or `SHAREDROP_WORKSPACE`) applies
+  when no `--workspace` is passed; `--personal` overrides it for one command. In scripts,
+  always pass `--workspace` (or `--personal`) explicitly; leave the default to interactive
+  sessions. `whoami --json` shows the active one in `default_workspace`. If a default fails
+  with exit `5`, tell the user; do not clear it or retry in personal space unasked.
+
 ## Share, disappearing links and folders
 
 - **Share by email (every tier):** `sharedrop share <id> --email someone@example.com --json`.
@@ -217,10 +254,10 @@ for a change, regenerate and update the same page by id.
   `sharedrop link create <id> --expires-in 12h --max-views 5 --json`, add
   `--people a@x.com,b@x.com` for named people (Sharedrop emails them unless you pass
   `--no-email`), and `--present` for a deck that opens fullscreen.
-- **Folders (Pro):** `--folder reports/q3` on `upload` (single files and bundles), or
-  `sharedrop move <id> --folder reports/q3 --json`. Missing path segments are created. A
-  free key gets `FOLDERS_RESTRICTED`; tell the user rather than uploading to the top level
-  silently.
+- **Folders (Pro, or Team in a workspace):** `--folder reports/q3` on `upload` (single files
+  and bundles), or `sharedrop move <id> --folder reports/q3 --json`. Missing path segments
+  are created, in the page's own space. Without folders on the plan the CLI returns
+  `FOLDERS_RESTRICTED`; tell the user rather than uploading to the top level silently.
 
 Watermarks, archives and every flag: [references/cli-reference.md](references/cli-reference.md).
 
@@ -260,7 +297,7 @@ blindly:
 | `TIER_LIMIT` | The page cap, or a feature or file kind not on the plan. List pages and ask what to remove, or suggest upgrading; never delete on your own. For `shared` visibility, fall back to `private` plus `share`. |
 | `FILE_SIZE_EXCEEDED` | Over the cap in the message. HTML, text and SVG are capped at 10 MB on every plan, so upgrading does not help: split the page or move images into a folder bundle. |
 | `STORAGE_LIMIT` | Storage is full. Relay the message; emptying the trash is the user's call. |
-| `FOLDERS_RESTRICTED` | Folders need Pro. Tell the user. |
+| `FOLDERS_RESTRICTED` | Personal folders need Pro; workspace folders need a Team workspace. Tell the user. |
 
 Exit codes: `0` success, `1` general error (and `check` finding changes), `2` no token
 found, `3` token rejected or action forbidden (read `error.code`: `FOLDERS_RESTRICTED` is
@@ -313,6 +350,8 @@ Evidence and the support matrix: [references/model-support.md](references/model-
 - CLI releases before 1.12.0 defaulted to `--mode static`, refused `update <id> <folder>`,
   ignored `--folder` on folder bundles, exited 2 for a rejected token and had no `check`
   command or `version` field. Update the CLI rather than working around them.
+- CLI releases before 1.13.0 had no `workspaces` command, took only a workspace id for
+  `--workspace`, and could not update a workspace page. Update the CLI.
 - CLI releases up to 1.10.0 had no `link` command; disappearing links needed the MCP tool
   `Sharedrop:create_ephemeral_link`.
 
