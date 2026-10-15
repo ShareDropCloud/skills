@@ -43,13 +43,16 @@ no pre-check tool on MCP, so read `warnings` from the finalize result instead.
    `Sharedrop:finalize_bundle` once with every `{ path, object_key, upload_token }`.
    Exactly one path is `index.html`. To replace a bundle page, pass the same `page_id` to
    the `index.html` file's `Sharedrop:create_upload` and to `Sharedrop:finalize_bundle`.
+   Sign the root with an HTML `filename` and each asset with a `filename` that has the
+   same extension as its `path`, or `Sharedrop:finalize_bundle` refuses it with
+   `file_name_mismatch`.
 6. Team workspaces: when the user mentions a team or workspace, call
    `Sharedrop:list_workspaces` and pass the matching `slug` (the workspace address) as
    `workspace` to `Sharedrop:create_upload` and `Sharedrop:finalize_upload`. Never ask the
    user for a workspace id. A revision of a workspace page needs only `page_id`. Check the
    workspace's `can_upload` first (false for a read-only viewer), and do not edit someone
-   else's page unless `can_edit_all_pages` is true (owners only; a member edits only pages
-   they created). `can_upload` reflects your role; a workspace with a billing problem refuses uploads with 402 until the owner fixes billing.
+   else's page unless `can_edit_all_pages` is true (owners and members; both edit every page
+   in the workspace). `can_upload` reflects your role; a workspace with a billing problem refuses uploads with 402 until the owner fixes billing.
 
 Call `Sharedrop:whoami` when you need the username, tier or entitlements (images and
 video need a paid plan on MCP uploads too). Verify from the finalize result as in SKILL.md
@@ -62,11 +65,21 @@ and `Sharedrop:fetch_page` returns a short-lived `fetch_url` to GET with no auth
 |---|---|
 | List or inspect | `Sharedrop:list_pages`, `Sharedrop:get_page` |
 | Team workspaces | `Sharedrop:list_workspaces` (each has `id`, `name`, `slug`, `role`, `tier`, `can_upload`, `can_edit_all_pages`); `workspace` on `list_pages`, `create_upload`, `finalize_upload`, `finalize_bundle`, `list_folders`, `create_folder`, `create_reservation` and `list_reservations` takes the id or address |
+| Past versions (your own pages, every page in your workspaces) | `Sharedrop:list_versions` (current first; each has `version`, `selector`, `live`, `kind`, `file_size`, `has_original`), then `Sharedrop:fetch_page` with `version` (a number or `"latest"`) |
 | Metadata, watermark | `Sharedrop:update_page` (`watermark_enabled` for the overlay) |
 | Share by email | `Sharedrop:share_with_email`, `Sharedrop:share_page`, `Sharedrop:list_shares`, `Sharedrop:revoke_share` |
 | Disappearing links (Pro) | `Sharedrop:create_ephemeral_link`, `Sharedrop:list_ephemeral_links`, `Sharedrop:update_ephemeral_link`, `Sharedrop:revoke_ephemeral_link` |
 | Folders (Pro, or Team in a workspace) | `Sharedrop:create_folder`, `Sharedrop:list_folders`, `Sharedrop:move_page`, `Sharedrop:delete_folder`, `Sharedrop:restore_page`. `move_page` and `delete_folder` act in the page's or folder's own space; with `workspace` on `finalize_upload`, `folder_path` resolves in that workspace's folders |
 | Delete (explicit request only) | `Sharedrop:delete_page` |
+
+Use the version tools when the user wants an earlier version back, wants to compare two
+versions, or a re-upload went wrong. `Sharedrop:fetch_page` with `version` returns a
+`fetch_url` that serves that version's exact upload as a download (a folder upload as a
+zip), plus `version`, `filename` and `content_type`. Only a version with
+`has_original: true` has one. The URL lasts about 5 minutes and works for anyone holding
+it, so do not paste it anywhere public. To recover, re-upload the good file with the
+page's `page_id`: same link, new version number. A page only shared with you returns
+`PAGE_NOT_FOUND`.
 
 `Sharedrop:create_ephemeral_link` takes `page_id` plus `expires_in_seconds`, `max_views`
 or both (at least one is required), `audience: "anyone"` or `audience: "people"` with
@@ -121,6 +134,12 @@ curl -s -H "Authorization: Bearer $SHAREDROP_TOKEN" https://sharedrop.cloud/api/
 FETCH_URL=$(curl -s -H "Authorization: Bearer $SHAREDROP_TOKEN" \
   https://sharedrop.cloud/api/v1/pages/<page_id>/fetch | jq -r '.data.fetch_url')
 curl -s "$FETCH_URL" -o page.html      # no auth header; the URL token is the credential
+
+# Past versions (your own pages, every page in your workspaces): list them, then download one as uploaded
+curl -s -H "Authorization: Bearer $SHAREDROP_TOKEN" \
+  https://sharedrop.cloud/api/v1/pages/<page_id>/versions
+curl -s -OJ -H "Authorization: Bearer $SHAREDROP_TOKEN" \
+  https://sharedrop.cloud/api/v1/pages/<page_id>/versions/2/download
 ```
 
 Full API reference: https://sharedrop.cloud/docs/api-reference

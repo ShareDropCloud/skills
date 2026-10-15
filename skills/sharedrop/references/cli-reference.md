@@ -1,7 +1,7 @@
 # Sharedrop CLI reference
 
 Every command, flag and JSON field the skill uses, checked against the `@sharedrop/cli`
-1.13.0 source. Full upstream reference: https://sharedrop.cloud/docs/cli
+1.14.0 source. Full upstream reference: https://sharedrop.cloud/docs/cli
 
 ## Contents
 
@@ -27,7 +27,7 @@ Every command, flag and JSON field the skill uses, checked against the `@sharedr
 ```bash
 npm install -g @sharedrop/cli      # installs the `sharedrop` binary (needs Node.js 20.10+)
 npx @sharedrop/cli <command>       # same thing without a global install
-sharedrop --version                # confirm it runs; `check` needs 1.12.0 or later, `workspaces` 1.13.0
+sharedrop --version                # confirm it runs; `check` needs 1.12.0 or later, `workspaces` 1.13.0, `versions` 1.14.0
 ```
 
 ## Sign-in and target
@@ -211,6 +211,33 @@ rendered HTML, and inline `data:` images come back as hosted `/api/images/...` l
 Compare checksums only for kinds that keep their bytes; otherwise check `get` metadata and
 look for the expected content. `download` of an archive page streams the raw file.
 
+Past versions (CLI 1.14.0) work on your own pages and every page in your workspaces; a page only shared with you returns
+`PAGE_NOT_FOUND` (exit `5`):
+
+```bash
+sharedrop versions <ref> --json                   # every kept version, the current one first
+sharedrop download <ref> --version 2              # the exact file uploaded as version 2
+sharedrop download <ref> --version latest -o x.pdf
+```
+
+`versions --json` prints `{"data":[...]}`, one row per version: `version`, `selector`
+(`latest` for the current one, else the version's id), `live`, `file_size`, `kind`,
+`content_type`, `has_original` and `created_at`. Only rows with `has_original: true` can be
+downloaded; most versions saved before originals were kept have none.
+
+`download --version <n|latest>` streams the original upload to disk (a folder upload as a
+zip), named `<slug>-v<N>.<ext>` unless you pass `-o` (`-o -` writes to stdout). With
+`--json`, or when piped, it prints:
+
+```json
+{"data":{"id":"abc234","version":2,"path":"abc234-v2.pdf","filename":"abc234-v2.pdf","size_bytes":48213}}
+```
+
+`id` is the ref you passed and `version` is a number, or `"latest"`. Use it to get an
+earlier version back, to diff two versions, or to recover after a bad re-upload: download
+the good one and `update <id>` with it so the link stays the same. `sharedrop -V`, or
+`--version` before any command, prints the CLI version instead.
+
 ## Find and inspect
 
 ```bash
@@ -237,10 +264,10 @@ sharedrop workspaces --json      # the team workspaces this account belongs to
 ```
 
 `can_upload` is true for an owner or member and false for a read-only viewer;
-`can_edit_all_pages` is true only for an owner (a member edits only pages they created).
+`can_edit_all_pages` is true for an owner or member (both edit every page in the workspace).
 Check `can_upload` before uploading, and do not edit someone else's page unless
-`can_edit_all_pages` is true. Text output shows `access: upload, edit all pages` (owner),
-`access: upload, edit own pages` (member) or `access: read only` (viewer).
+`can_edit_all_pages` is true. Text output shows `access: upload, edit all pages` (owner or
+member) or `access: read only` (viewer).
 `can_upload` reflects your role; a workspace with a billing problem refuses uploads with 402 until the owner fixes billing.
 
 `slug` is the workspace address. Pass it (or the `id`) to `--workspace` on `upload`,
@@ -317,10 +344,9 @@ Workspace folders (CLI 1.13.0): `folder create` and `folder list` take `--worksp
 (or the default workspace) and `--personal`. `folder rename`, `move`, `delete`, `restore` and
 `move <page>` need no workspace: they act in the folder's or page's own space, so
 `move <id> --folder <path>` finds and creates the path in a workspace page's own workspace.
-Owners and members manage workspace folders, viewers only list them. A member moving or
-deleting a folder that holds another member's pages gets exit `3` and `This folder holds pages
-created by other members. Only a workspace owner can move or delete it.` A folder in the
-other space gets exit `6` and `A folder and its pages must be in the same space.`
+Owners and members manage every workspace folder, whoever created the pages in it; viewers
+only list them. A folder in the other space gets exit `6` and `A folder and its pages must be
+in the same space.`
 
 ```bash
 sharedrop folder create reports --workspace ascend --json

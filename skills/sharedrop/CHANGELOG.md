@@ -2,12 +2,25 @@
 
 ## Contents
 
+- [Unreleased (past versions for CLI 1.14.0)](#unreleased-past-versions-for-cli-1140)
 - [Unreleased (team workspaces for CLI 1.13.0)](#unreleased-team-workspaces-for-cli-1130)
 - [2026.10.07 (multi-file package for CLI 1.12.0)](#20261007-multi-file-package-for-cli-1120)
 - [Changes from the previous public skill](#changes-from-the-previous-public-skill)
 - [Changes from the audit rebuild](#changes-from-the-audit-rebuild)
 - [Deviations kept on purpose](#deviations-kept-on-purpose)
 - [Release record](#release-record)
+
+## Unreleased (past versions for CLI 1.14.0)
+
+Teaches page versions (GitLab sharedrop #416, #417 and #418):
+
+- SKILL.md `## Read a page back`: `sharedrop versions` and `download --version`, and when
+  to use them (get an earlier version back, compare two versions, recover after a bad
+  re-upload). `compatibility` notes CLI 1.14.0 for past versions.
+- `references/cli-reference.md`: the `versions` JSON rows and the `download --version`
+  JSON result; checked against the 1.14.0 source.
+- `references/mcp-and-rest.md`: `Sharedrop:list_versions`, `Sharedrop:fetch_page` with
+  `version`, and the REST list and download routes.
 
 ## Unreleased (team workspaces for CLI 1.13.0)
 

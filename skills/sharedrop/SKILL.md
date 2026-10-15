@@ -1,7 +1,7 @@
 ---
 name: sharedrop
 description: Publishes generated documents to Sharedrop (sharedrop.cloud, also written ShareDrop) as stable private URLs and reads Sharedrop pages back into context, using the sharedrop CLI first and the Sharedrop MCP tools only when there is no shell. Use when the user asks to share, publish, upload, host or send a link to a report, dashboard, HTML page, slide deck, PDF, image, Markdown file or agent skill; to update or re-upload an existing Sharedrop page and keep its URL; to share a page by email, make a disappearing link or file pages into folders; or when they hand over a sharedrop.cloud link or page id to fetch or download. Not for publishing a claude.ai Artifact, sharing Google Drive, Notion or Canva files, emailing an attachment, deploying a website to a host such as Vercel or Netlify, or replies that belong in the chat.
-compatibility: Needs the sharedrop CLI 1.12.0 or later (1.13.0 for team workspaces) (npm package @sharedrop/cli, Node.js 20.10 or later) signed in with `sharedrop login` or a SHAREDROP_TOKEN API key. jq is optional. Without a shell, use the Sharedrop MCP server instead. Personal folders, disappearing links and archives need a Pro plan; workspace folders come with Team.
+compatibility: Needs the sharedrop CLI 1.12.0 or later (1.13.0 for team workspaces, 1.14.0 for past versions) (npm package @sharedrop/cli, Node.js 20.10 or later) signed in with `sharedrop login` or a SHAREDROP_TOKEN API key. jq is optional. Without a shell, use the Sharedrop MCP server instead. Personal folders, disappearing links and archives need a Pro plan; workspace folders come with Team.
 model: claude-sonnet-5-5
 ---
 
@@ -195,7 +195,8 @@ for a change, regenerate and update the same page by id.
 
 ## Visibility and mode
 
-- **Visibility defaults to `private`** (owner only). Publishing is the user's call: use
+- **Visibility defaults to `private`** (owner only on a personal page; everyone in the
+  team on a team workspace page). Publishing is the user's call: use
   `--visibility public` only when they clearly ask to publish or say anyone can view.
   Use `--visibility shared` only when `whoami` lists `shared` in
   `entitlements.allowedVisibilities`; otherwise keep the page `private` and use
@@ -221,7 +222,7 @@ workspace, and do not try to edit someone else's page unless `can_edit_all_pages
 | Role | `can_upload` | `can_edit_all_pages` | Can do |
 |---|---|---|---|
 | owner | `true` | `true` | Upload; edit, re-upload and delete every page |
-| member | `true` | `false` | Upload; edit, re-upload and delete only pages they created |
+| member | `true` | `true` | Upload; edit, re-upload and delete every page in the workspace |
 | viewer | `false` | `false` | Read only |
 
 `can_upload` reflects your role; a workspace with a billing problem refuses uploads with 402 until the owner fixes billing.
@@ -233,8 +234,8 @@ workspace, and do not try to edit someone else's page unless `can_edit_all_pages
 - A workspace has its own folders (Team plan, whatever the user's personal plan):
   `sharedrop folder list --workspace <address> --json`, and `--folder <path>` on a workspace
   upload files into them. `move <id> --folder <path>` uses the page's own space with no
-  `--workspace`. Owners and members manage folders, viewers only list them, and a member
-  cannot move or delete a folder holding another member's pages (exit `3`, tell the user).
+  `--workspace`. Owners and members manage every workspace folder and page; viewers only
+  list them.
 - `Workspace not found or you are not a member` (exit `5`) means a wrong address: list the
   workspaces again rather than guessing.
 - A default workspace (`sharedrop workspaces use <address>`, or `SHAREDROP_WORKSPACE`) applies
@@ -270,6 +271,22 @@ Watermarks, archives and every flag: [references/cli-reference.md](references/cl
   `scripts_will_run`.
 
 `<ref>` is a page id, slug or full page URL, so a link from the user works as it is.
+
+**Past versions (CLI 1.14.0; your own pages and every page in your workspaces).** Use these when the user wants an
+earlier version back, wants to compare two versions, or a re-upload went wrong and they
+need what was there before:
+
+```bash
+sharedrop versions <ref> --json                      # current first; version, kind, has_original
+sharedrop download <ref> --version 2 --json          # the exact file uploaded as version 2
+sharedrop download <ref> --version latest -o now.pdf # the current version's upload
+```
+
+`download --version` writes `<slug>-v<N>.<ext>` unless you pass `-o` (a folder upload comes
+back as a zip) and its JSON gives `path`, `filename` and `size_bytes`. Only a version with
+`has_original: true` can be downloaded. To compare, download both and diff the files. To
+recover after a bad re-upload, download the good version (unzip a folder upload) and
+`sharedrop update <id> <file|folder>` with it: same link, new version number. A page only shared with you returns `PAGE_NOT_FOUND`.
 
 ## Delete only on request
 
@@ -352,6 +369,8 @@ Evidence and the support matrix: [references/model-support.md](references/model-
   command or `version` field. Update the CLI rather than working around them.
 - CLI releases before 1.13.0 had no `workspaces` command, took only a workspace id for
   `--workspace`, and could not update a workspace page. Update the CLI.
+- CLI releases before 1.14.0 had no `versions` command or `download --version`. Update
+  the CLI, or use MCP `Sharedrop:list_versions` and `Sharedrop:fetch_page` with `version`.
 - CLI releases up to 1.10.0 had no `link` command; disappearing links needed the MCP tool
   `Sharedrop:create_ephemeral_link`.
 
