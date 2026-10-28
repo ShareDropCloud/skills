@@ -306,6 +306,19 @@ On a paid tier the page becomes `shared`; on free it stays `private` and the rec
 opens it through the grant. Share emails have a daily limit; over it the share still
 works but no email is sent, and `--json` output carries `email_warning`.
 
+Pages other people have shared with the user (CLI 1.14.0):
+
+```bash
+sharedrop shared --json      # newest first; --limit <n> (default 50), --cursor <id>
+```
+
+```json
+{"data":[{"page_id":"550e8400-e29b-41d4-a716-446655440000","title":"Q3 report","kind":"html","url":"/bob/q3abcd","full_url":"https://sharedrop.cloud/bob/q3abcd","shared_by":"bob","shared_at":"2026-10-20T05:00:00.000Z","expires_at":null}],"pagination":{"next_cursor":null,"has_more":false}}
+```
+
+Read one with `fetch <page_id>`. Shares belong to a person, so a workspace (`sdw_`) key is
+refused with exit `3`; use a personal key or `sharedrop login`.
+
 Disappearing links (Pro) are separate URLs with their own limits. They never change the
 page's visibility or share list.
 

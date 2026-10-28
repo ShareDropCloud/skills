@@ -22,6 +22,11 @@ Teaches page versions (GitLab sharedrop #416, #417 and #418):
 - `references/mcp-and-rest.md`: `Sharedrop:list_versions`, `Sharedrop:fetch_page` with
   `version`, and the REST list and download routes.
 
+Teaches the pages others have shared with the user (GitLab sharedrop #446):
+
+- `references/cli-reference.md`: `sharedrop shared --json` and its rows.
+- `references/mcp-and-rest.md`: `Sharedrop:list_shared_with_me` and `GET /api/v1/shared`.
+
 ## Unreleased (team workspaces for CLI 1.13.0)
 
 Teaches team workspaces (GitLab sharedrop #408 and #385):

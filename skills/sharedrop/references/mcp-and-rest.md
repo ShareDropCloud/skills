@@ -68,6 +68,7 @@ and `Sharedrop:fetch_page` returns a short-lived `fetch_url` to GET with no auth
 | Past versions (your own pages, every page in your workspaces) | `Sharedrop:list_versions` (current first; each has `version`, `selector`, `live`, `kind`, `file_size`, `has_original`), then `Sharedrop:fetch_page` with `version` (a number or `"latest"`) |
 | Metadata, watermark | `Sharedrop:update_page` (`watermark_enabled` for the overlay) |
 | Share by email | `Sharedrop:share_with_email`, `Sharedrop:share_page`, `Sharedrop:list_shares`, `Sharedrop:revoke_share` |
+| Pages others shared with you | `Sharedrop:list_shared_with_me` (newest first; each has `page_id`, `title`, `kind`, `url` (path), `full_url` (link to give the user), `shared_by`, `shared_at`, `expires_at`; `limit` and `cursor` to page). Read one with `Sharedrop:fetch_page`. A workspace-scoped key is refused |
 | Disappearing links (Pro) | `Sharedrop:create_ephemeral_link`, `Sharedrop:list_ephemeral_links`, `Sharedrop:update_ephemeral_link`, `Sharedrop:revoke_ephemeral_link` |
 | Folders (Pro, or Team in a workspace) | `Sharedrop:create_folder`, `Sharedrop:list_folders`, `Sharedrop:move_page`, `Sharedrop:delete_folder`, `Sharedrop:restore_page`. `move_page` and `delete_folder` act in the page's or folder's own space; with `workspace` on `finalize_upload`, `folder_path` resolves in that workspace's folders |
 | Delete (explicit request only) | `Sharedrop:delete_page` |
@@ -129,6 +130,9 @@ curl -X POST https://sharedrop.cloud/api/upload/finalize \
 # Team workspaces: the id and address (slug) of each; pass either as "workspace" to sign
 # and as "workspace_id" to finalize and GET /api/v1/pages
 curl -s -H "Authorization: Bearer $SHAREDROP_TOKEN" https://sharedrop.cloud/api/v1/workspaces
+
+# Pages other people shared with you, newest first (personal key only; ?cursor=&limit= to page)
+curl -s -H "Authorization: Bearer $SHAREDROP_TOKEN" https://sharedrop.cloud/api/v1/shared
 
 # Read a page's raw content (two-step token handoff)
 FETCH_URL=$(curl -s -H "Authorization: Bearer $SHAREDROP_TOKEN" \
